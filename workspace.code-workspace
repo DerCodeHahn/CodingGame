@@ -1,0 +1,21 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": ".."
+		}
+	],
+	"settings": {
+		"emeraldwalk.runonsave": {
+			"commands": [
+				{
+					"match": ".cs",
+					"isAsync": true,
+					"cmd": "python combine.py"
+				}
+			]
+		},
+	},
+}

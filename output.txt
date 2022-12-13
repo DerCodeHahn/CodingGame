@@ -1,0 +1,321 @@
+using System.Text;
+using System.Linq;
+using System.IO;
+using System;
+using System.Collections.Generic;
+using System.Collections;
+using System.Numerics;
+/*
+Actions.cs
+*/
+
+
+static class Actions
+{
+    const string BUILD = "BUILD ";
+    const string MOVE = "MOVE ";
+    const string SPAWN = "SPAWN ";
+    const string WAIT = "WAIT ";
+    const string MESSAGE = "MESSAGE ";
+
+    public static string Build (Vector2 position)
+    {
+        return BUILD + Print (position) + ";";
+    }
+
+    public static string Spawn (Field field, int amount)
+    {
+        return Spawn (field.position, amount);
+    }
+
+    public static string Spawn (Vector2 position, int amount)
+    {
+        return SPAWN + amount + " " + Print (position) + ";";
+    }
+
+    public static string Move (Vector2 from, Vector2 to, int amount)
+    {
+        return MOVE + amount + " " + Print (from) + " " + Print (to) + ";";
+    }
+
+    public static string Print (Vector2 target)
+    {
+        return $"{(int)target.X} {(int) target.Y}";
+    }
+
+    public static string Wait ()
+    {
+        return WAIT;
+    }
+
+}
+
+
+/*
+Consts.cs
+*/
+
+static class Consts
+{
+    public static int BuildCost = 10;
+    public static int IncomePerRound = 10;
+}
+
+
+/*
+Field.cs
+*/
+
+
+struct Field
+{
+    public Vector2 position;
+    public int scrapAmount;
+    public int owner;
+    public int units;
+    public bool recycler;
+    public bool canBuild;
+    public bool canSpawn;
+    public bool inRangeOfRecycler;
+
+    public int TotalCollectableScrap;
+
+    public Field (Vector2 position, int scrapAmount, int owner, int units, bool recycler, bool canBuild, bool canSpawn, bool inRangeOfRecycler)
+    {
+        this.position = position;
+        this.scrapAmount = scrapAmount;
+        this.owner = owner;
+        this.units = units;
+        this.recycler = recycler;
+        this.canBuild = canBuild;
+        this.canSpawn = canSpawn;
+        this.inRangeOfRecycler = inRangeOfRecycler;
+        TotalCollectableScrap = 0;
+    }
+
+    public static int SortByTotalCollectableScrap (Field x, Field y)
+    {
+        return x.TotalCollectableScrap.CompareTo (y.TotalCollectableScrap) * -1;
+    }
+
+    public string Info ()
+    {
+        return $"{Actions.Print(position)}  {TotalCollectableScrap}";
+    }
+}
+
+
+/*
+GameBoard.cs
+*/
+
+
+class GameBoard
+{
+    public static int width, height;
+    public Field[, ] fields;
+
+    public List<Field> MyFields;
+    public List<Field> EnemieFields;
+    public List<Field> FreeField;
+
+    public List<Vector2> MyUnits;
+
+    public Field this [Vector2 position]
+    {
+        get { return this [(int) position.X, (int) position.Y]; }
+        set { fields[(int) position.X, (int) position.Y] = value; }
+    }
+
+    public Field this [int x, int y]
+    {
+        get { return fields[x, y]; }
+        set { fields[x, y] = value; }
+    }
+
+    public GameBoard ()
+    {
+        this.fields = new Field[width, height];
+        MyFields = new List<Field> ();
+        EnemieFields = new List<Field> ();
+        FreeField = new List<Field> ();
+        MyUnits = new List<Vector2> ();
+    }
+
+    public GameBoard (Field[, ] fields)
+    {
+        this.fields = fields;
+        MyFields = new List<Field> ();
+        EnemieFields = new List<Field> ();
+        FreeField = new List<Field> ();
+        MyUnits = new List<Vector2> ();
+
+    }
+
+    public void Analize ()
+    {
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                Field field = fields[x, y];
+                if (field.scrapAmount == 0)
+                    continue;
+                field.TotalCollectableScrap = 10;
+                GetSurroundingValues (ref field);
+                if (field.owner == 1)
+                {
+                    MyFields.Add (field);
+                    if (field.units >= 1)
+                        for (var i = 0; i < field.units; i++)
+                        {
+                            MyUnits.Add (field.position);
+                        }
+
+                }
+                else if (field.owner == 0)
+                    EnemieFields.Add (field);
+                else
+                    FreeField.Add (field);
+            }
+        }
+
+    }
+
+    public List<Field> GetBestUnOwnedFields ()
+    {
+        List<Field> notmine = new List<Field> (EnemieFields);
+        notmine.AddRange (FreeField);
+        notmine.Sort (Field.SortByTotalCollectableScrap);
+        return notmine;
+    }
+
+    public Field GetRandomMyField ()
+    {
+        Random rnd = new Random();
+        return MyFields[rnd.Next(MyFields.Count)];
+    }
+
+    void GetSurroundingValues (ref Field field)
+    {
+        int count = field.scrapAmount;
+        if (field.position.Y - 1 >= 0)
+            count += this [field.position - Vector2.UnitY].scrapAmount;
+        if (field.position.Y + 1 < height)
+            count += this [field.position + Vector2.UnitY].scrapAmount;
+        if (field.position.X - 1 >= 0)
+            count += this [field.position - Vector2.UnitX].scrapAmount;
+        if (field.position.X + 1 < width)
+            count += this [field.position + Vector2.UnitX].scrapAmount;
+
+        field.TotalCollectableScrap = count;
+    }
+
+    internal Field NextFree(Vector2 myUnit)
+    {
+        List<Field> notmine = new List<Field> (EnemieFields);
+        notmine.AddRange (FreeField);
+        float MinDistance = float.MaxValue;
+        Field clostest = new Field();
+        foreach(Field field in notmine)
+        {
+            float distance = Vector2.Distance(field.position, myUnit);
+            if(distance < MinDistance)
+            {
+                MinDistance = distance;
+                clostest = field;
+            }
+        }
+        return clostest;
+    }
+}
+
+
+/*
+mainCode.cs
+*/
+
+
+public enum GamePhase
+{
+    Early,
+    Mid,
+    Late
+}
+
+class Player
+{
+    static void Main (string[] args)
+    {
+        string[] inputs;
+        inputs = Console.ReadLine ().Split (' ');
+        int width = int.Parse (inputs[0]);
+        int height = int.Parse (inputs[1]);
+        GameBoard.height = height;
+        GameBoard.width = width;
+
+        Field[, ] fields;
+
+        // game loop
+        while (true)
+        {
+            inputs = Console.ReadLine ().Split (' ');
+            int myMatter = int.Parse (inputs[0]);
+            int oppMatter = int.Parse (inputs[1]);
+            fields = new Field[width, height];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    Vector2 position = new Vector2 (x, y);
+                    inputs = Console.ReadLine ().Split (' ');
+                    int scrapAmount = int.Parse (inputs[0]);
+                    int owner = int.Parse (inputs[1]); // 1 = me, 0 = foe, -1 = neutral
+                    int units = int.Parse (inputs[2]);
+                    bool recycler = int.Parse (inputs[3]) == 1;
+                    bool canBuild = int.Parse (inputs[4]) == 1;
+                    bool canSpawn = int.Parse (inputs[5]) == 1;
+                    bool inRangeOfRecycler = int.Parse (inputs[6]) == 1;
+                    fields[x, y] = new Field (position, scrapAmount, owner, units, recycler, canBuild, canSpawn, inRangeOfRecycler);
+                }
+            }
+            GameBoard gameBoard = new GameBoard (fields);
+            gameBoard.Analize ();
+
+            // Write an action using Console.WriteLine()
+            List<Field> best = gameBoard.GetBestUnOwnedFields ();
+            string command = "";
+            HashSet<Field> alreadyTargets = new HashSet<Field> ();
+            if (myMatter >= Consts.BuildCost)
+            {
+                int count = myMatter / Consts.BuildCost;
+                for (var i = 0; i < count; i++)
+                {
+                    command += Actions.Spawn (gameBoard.GetRandomMyField (), 1);
+                }
+            }
+
+            // foreach (Field field in best)
+            // {
+            //     //Console.Error.WriteLine(field.Info());
+            //     if (!alreadyTargets.Contains (field))
+            //     {
+            //         Console.Error.WriteLine (myUnit);
+            //         command += Actions.Move (myUnit, field.position, 1);
+
+            //         alreadyTargets.Add (field);
+            //         break;
+            //     }
+            // }
+
+            foreach (Vector2 myUnit in gameBoard.MyUnits)
+            {
+                Field nextFree = gameBoard.NextFree(myUnit);
+                command += Actions.Move (myUnit, nextFree.position, 1);
+            }
+
+            Console.WriteLine (command);
+        }
+    }
+}
+
