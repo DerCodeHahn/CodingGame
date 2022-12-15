@@ -55,8 +55,9 @@ class GameBoard
                 Field field = fields[x, y];
                 if (field.scrapAmount == 0)
                     continue;
-                field.TotalCollectableScrap = 10;
+
                 GetSurroundingValues (ref field);
+
                 if (field.owner == 1)
                 {
                     MyFields.Add (field);
@@ -84,37 +85,75 @@ class GameBoard
         return notmine;
     }
 
+    public List<Field> GetHigherSurroundingsFields()
+    {
+        List<Field> mine = new List<Field> (MyFields);
+        mine = mine.FindAll((c) => {return c.SuroundingStays;});
+        return mine;
+    }
+
     public Field GetRandomMyField ()
-    { 
-        Random rnd = new Random();
-        return MyFields[rnd.Next(MyFields.Count)];
+    {
+        Random rnd = new Random ();
+        return MyFields[rnd.Next (MyFields.Count)];
     }
 
     void GetSurroundingValues (ref Field field)
     {
         int count = field.scrapAmount;
+        bool higherSurroundings = true;
         if (field.position.Y - 1 >= 0)
-            count += this [field.position - Vector2.UnitY].scrapAmount;
+        {
+            Field lower = this [field.position - Vector2.UnitY];
+            count += lower.scrapAmount;
+            if(!CheckForHigherSurrounding(field, lower))
+                higherSurroundings = false;
+        }
         if (field.position.Y + 1 < height)
-            count += this [field.position + Vector2.UnitY].scrapAmount;
+        {
+            Field upper = this [field.position + Vector2.UnitY];
+            count += upper.scrapAmount;
+           if(!CheckForHigherSurrounding(field, upper))
+                higherSurroundings = false;
+        }
         if (field.position.X - 1 >= 0)
-            count += this [field.position - Vector2.UnitX].scrapAmount;
+        {
+            Field left = this [field.position - Vector2.UnitX];
+            count += left.scrapAmount;
+            if(!CheckForHigherSurrounding(field, left))
+                higherSurroundings = false;
+        }
         if (field.position.X + 1 < width)
-            count += this [field.position + Vector2.UnitX].scrapAmount;
+        {
+            Field right = this [field.position + Vector2.UnitX];
+            count += right.scrapAmount;
+            if(!CheckForHigherSurrounding(field, right))
+                higherSurroundings = false;
+        }
 
         field.TotalCollectableScrap = count;
+
+        field.SuroundingStays = higherSurroundings;
     }
 
-    internal Field NextFree(Vector2 myUnit)
+    bool CheckForHigherSurrounding(Field field, Field surroundedField )
+    {
+        if(surroundedField.scrapAmount != 0 && surroundedField.scrapAmount <= field.scrapAmount)
+            return false;
+        else 
+            return true;
+    }
+
+    internal Field NextFree (Vector2 myUnit)
     {
         List<Field> notmine = new List<Field> (EnemieFields);
         notmine.AddRange (FreeField);
         float MinDistance = float.MaxValue;
-        Field clostest = new Field();
-        foreach(Field field in notmine)
+        Field clostest = new Field ();
+        foreach (Field field in notmine)
         {
-            float distance = Vector2.Distance(field.position, myUnit);
-            if(distance < MinDistance)
+            float distance = Vector2.Distance (field.position, myUnit);
+            if (distance < MinDistance)
             {
                 MinDistance = distance;
                 clostest = field;

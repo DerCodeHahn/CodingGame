@@ -25,7 +25,7 @@ class Player
         GameBoard.width = width;
 
         Field[, ] fields;
-
+        int SurroundingCounter = 10;
         // game loop
         while (true)
         {
@@ -56,8 +56,21 @@ class Player
             List<Field> best = gameBoard.GetBestUnOwnedFields ();
             string command = "";
             HashSet<Field> alreadyTargets = new HashSet<Field> ();
+            
+
             if (myMatter >= Consts.BuildCost)
             {
+                List<Field> higherSurroundingFields = gameBoard.GetHigherSurroundingsFields ();
+                foreach (Field field in higherSurroundingFields)
+                {
+                    Console.Error.WriteLine(field.Info() + " " + SurroundingCounter + field.canBuild);
+                    if (field.canBuild && SurroundingCounter > 0 && myMatter >= Consts.BuildCost && field.TotalCollectableScrap >= 25)
+                    {
+                        myMatter -= 10;
+                        SurroundingCounter--;
+                        command += Actions.Build (field);
+                    }
+                }
                 int count = myMatter / Consts.BuildCost;
                 for (var i = 0; i < count; i++)
                 {
@@ -65,22 +78,9 @@ class Player
                 }
             }
 
-            // foreach (Field field in best)
-            // {
-            //     //Console.Error.WriteLine(field.Info());
-            //     if (!alreadyTargets.Contains (field))
-            //     {
-            //         Console.Error.WriteLine (myUnit);
-            //         command += Actions.Move (myUnit, field.position, 1);
-
-            //         alreadyTargets.Add (field);
-            //         break;
-            //     }
-            // }
-
             foreach (Vector2 myUnit in gameBoard.MyUnits)
             {
-                Field nextFree = gameBoard.NextFree(myUnit);
+                Field nextFree = gameBoard.NextFree (myUnit);
                 command += Actions.Move (myUnit, nextFree.position, 1);
             }
 

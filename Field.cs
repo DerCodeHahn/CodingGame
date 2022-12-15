@@ -12,6 +12,7 @@ struct Field
     public bool inRangeOfRecycler;
 
     public int TotalCollectableScrap;
+    public bool SuroundingStays;
 
     public Field (Vector2 position, int scrapAmount, int owner, int units, bool recycler, bool canBuild, bool canSpawn, bool inRangeOfRecycler)
     {
@@ -24,6 +25,7 @@ struct Field
         this.canSpawn = canSpawn;
         this.inRangeOfRecycler = inRangeOfRecycler;
         TotalCollectableScrap = 0;
+        SuroundingStays = false;
     }
 
     public static int SortByTotalCollectableScrap (Field x, Field y)

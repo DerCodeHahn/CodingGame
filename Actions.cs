@@ -8,6 +8,10 @@ static class Actions
     const string WAIT = "WAIT ";
     const string MESSAGE = "MESSAGE ";
 
+    public static string Build (Field field)
+    {
+        return Build(field.position);
+    }
     public static string Build (Vector2 position)
     {
         return BUILD + Print (position) + ";";
