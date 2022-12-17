@@ -92,11 +92,11 @@ class Player
                 }
 
             }
-
+            nextGameBoards.Clear();
             //gameBoard.CommandGettingHere = command;
-            PopulateGameBoards(gameBoard, 0);
-            
-            Console.WriteLine (nextGameBoards[0].GetBuildString());
+            PopulateGameBoards (gameBoard, 0);
+
+            Console.WriteLine (nextGameBoards[0].GetBuildString ());
 
         }
     }
@@ -108,26 +108,30 @@ class Player
         for (int i = 0; i <= 100; i++)
         {
             GameBoard next = new GameBoard (board);
-            List<Action> moveCommands = new();
-
+            List<Action> moveCommands = new ();
             foreach ((byte x, byte y, byte count) myUnit in board.MyUnits)
             {
-                (sbyte x, sbyte y) direction = MoveDirections[random.Next (MoveDirections.Length)];
-                //TODO Check for correct movement
-                moveCommands.Add(new Move(myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count));
+                List < (sbyte, sbyte) > possibleDirection = board[myUnit.x, myUnit.y].GetPossibleMoveDirection (board);
+                if (possibleDirection.Count == 0)
+                    continue;
+                (sbyte x, sbyte y) direction = possibleDirection[random.Next (possibleDirection.Count)];
+               
+                moveCommands.Add (new Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count));
 
                 //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
             }
+
             //next.CurrentCommands = moveCommands;
-            next.ExecuteCommands(moveCommands);
+            next.ExecuteCommands (moveCommands);
             nextGameBoards.Add (next);
         }
-        nextGameBoards.Sort(GameBoard.SortByScore); // Maybe use directly sorted Structure ?
+        nextGameBoards.Sort (GameBoard.SortByScore); // Maybe use directly sorted Structure ?
 
-        for(int i = 0; i < 10; i++){
-            Console.Error.WriteLine(nextGameBoards[i].score);
+        for (int i = 0; i < 10; i++)
+        {
+            Console.Error.WriteLine ($"{nextGameBoards[i].score} {nextGameBoards[i].GetBuildString()}");
         }
-        
+
     }
 
     private static void FindMatchData (GameBoard board)

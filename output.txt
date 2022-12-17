@@ -1,10 +1,10 @@
-using System;
 using System.Text;
-using System.Linq;
 using System.IO;
-using System.Numerics;
 using System.Collections;
 using System.Collections.Generic;
+using System;
+using System.Linq;
+using System.Numerics;
 /*
 ActionsBuilder.cs
 */
@@ -78,7 +78,12 @@ struct Field
     public bool SuroundingStays;
     public bool GoodSpawn;
 
-    public Field(byte x, byte y, byte scrapAmount, bool mine, bool enemies, byte units, bool recycler, bool canBuild, bool canSpawn, bool inRangeOfRecycler)
+    static (sbyte x, sbyte y) [] MoveDirections = new (sbyte, sbyte) []
+    {
+        (0, -1), (0, 1), (-1, 0), (1, 0)
+    };
+
+    public Field (byte x, byte y, byte scrapAmount, bool mine, bool enemies, byte units, bool recycler, bool canBuild, bool canSpawn, bool inRangeOfRecycler)
     {
         X = x;
         Y = y;
@@ -103,6 +108,44 @@ struct Field
     public string PositionLog ()
     {
         return $"{X} {Y}";
+    }
+
+    public string Info()
+    {
+        return $"{PositionLog()} scrap {scrapAmount} mine {mine} enemies {enemies} units {units} recycler {recycler} canBuild {canBuild}";
+    }
+
+
+    public List < (sbyte, sbyte) > GetNeighbourDirection ()
+    {
+        List < (sbyte, sbyte) > possibleDirection = new ();
+        foreach ((sbyte x, sbyte y) direction in MoveDirections)
+        {
+            byte x = (byte) (X + direction.x);
+            byte y = (byte) (Y + direction.y);
+
+            if (x > 0 && y > 0 && x < GameBoard.width && y < GameBoard.height)
+                possibleDirection.Add(direction);
+        }
+        return possibleDirection;
+    }
+
+    public List < (sbyte, sbyte) > GetPossibleMoveDirection (GameBoard board)
+    {
+        List < (sbyte, sbyte) > possibleDirection = new();
+        foreach ((sbyte x, sbyte y) direction in GetNeighbourDirection())
+        {
+            byte x = (byte) (X + direction.x);
+            byte y = (byte) (Y + direction.y);
+
+            Field targetField = board[x, y];
+            if (targetField.scrapAmount != 0 && !targetField.recycler)
+            {
+                possibleDirection.Add (direction);
+            }
+        }
+
+        return possibleDirection;
     }
 }
 
@@ -149,19 +192,27 @@ class GameBoard
 
     public GameBoard (GameBoard board)
     {
-        this.fields = board.fields;
+        fields = (Field[, ]) board.fields.Clone ();
         MyFields = board.MyFields;
-        EnemieFields = board.EnemieFields;
-        FreeField = board.FreeField;
-        MyUnits = board.MyUnits;
+        EnemieFields = new HashSet<Field> ();
+        FreeField = new HashSet<Field> ();
+        MyUnits = new List < (byte x, byte y, byte n) > ();
         CommandGettingHere = board.CommandGettingHere;
         MyMatter = board.MyMatter;
+        CurrentCommands = new List<Action> ();
     }
 
-    public static int SortByScore (GameBoard board1, GameBoard board2) { return board1.score.CompareTo (board2.score); }
+    public static int SortByScore (GameBoard board1, GameBoard board2)
+    {
+        return board1.score.CompareTo (board2.score) * -1;
+    }
 
     public void Analize ()
     {
+        MyFields.Clear ();
+        EnemieFields.Clear ();
+        FreeField.Clear ();
+
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
@@ -193,7 +244,7 @@ class GameBoard
 
         int pureScore = MyFields.Count - EnemieFields.Count;
         score = pureScore + verticalScore / 2;
-        Console.Error.WriteLine ($"Current Score : {score}");
+        //Console.Error.WriteLine ($"Current Score : {score} : MyFields {MyFields.Count} , Enemie {EnemieFields.Count}, MyUnits :{MyUnits.Count}");
     }
 
     int VerticalScore ()
@@ -235,27 +286,15 @@ class GameBoard
     {
         field.TotalCollectableScrap = field.scrapAmount;
 
-        if (field.Y - 1 >= 0)
+        foreach ((sbyte x, sbyte y) direction in field.GetNeighbourDirection ())
         {
-            CheckNeighbour (ref field, 0, -1);
-        }
-        if (field.Y + 1 < height)
-        {
-            CheckNeighbour (ref field, 0, 1);
-        }
-        if (field.X - 1 >= 0)
-        {
-            CheckNeighbour (ref field, -1, 0);
-        }
-        if (field.X + 1 < width)
-        {
-            CheckNeighbour (ref field, 1, 0);
+            CheckNeighbour (ref field, direction);
         }
     }
 
-    private void CheckNeighbour (ref Field field, sbyte xdelta, sbyte ydelta)
+    private void CheckNeighbour (ref Field field, (sbyte x, sbyte y) delta)
     {
-        Field neighbour = fields[field.X + xdelta, field.Y + ydelta];
+        Field neighbour = fields[field.X + delta.x, field.Y + delta.y];
         //Max Amount Clamped by own scrapAmount
         field.TotalCollectableScrap += Math.Clamp (neighbour.scrapAmount, (byte) 0, field.scrapAmount);
 
@@ -408,11 +447,11 @@ class Player
                 }
 
             }
-
+            nextGameBoards.Clear();
             //gameBoard.CommandGettingHere = command;
-            PopulateGameBoards(gameBoard, 0);
+            PopulateGameBoards (gameBoard, 0);
 
-            Console.WriteLine (nextGameBoards[0].GetBuildString());
+            Console.WriteLine (nextGameBoards[0].GetBuildString ());
 
         }
     }
@@ -424,24 +463,28 @@ class Player
         for (int i = 0; i <= 100; i++)
         {
             GameBoard next = new GameBoard (board);
-            List<Action> moveCommands = new();
-
+            List<Action> moveCommands = new ();
             foreach ((byte x, byte y, byte count) myUnit in board.MyUnits)
             {
-                (sbyte x, sbyte y) direction = MoveDirections[random.Next (MoveDirections.Length)];
-                //TODO Check for correct movement
-                moveCommands.Add(new Move(myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count));
+                List < (sbyte, sbyte) > possibleDirection = board[myUnit.x, myUnit.y].GetPossibleMoveDirection (board);
+                if (possibleDirection.Count == 0)
+                    continue;
+                (sbyte x, sbyte y) direction = possibleDirection[random.Next (possibleDirection.Count)];
+
+                moveCommands.Add (new Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count));
 
                 //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
             }
+
             //next.CurrentCommands = moveCommands;
-            next.ExecuteCommands(moveCommands);
+            next.ExecuteCommands (moveCommands);
             nextGameBoards.Add (next);
         }
-        nextGameBoards.Sort(GameBoard.SortByScore); // Maybe use directly sorted Structure ?
+        nextGameBoards.Sort (GameBoard.SortByScore); // Maybe use directly sorted Structure ?
 
-        for(int i = 0; i < 10; i++){
-            Console.Error.WriteLine(nextGameBoards[i].score);
+        for (int i = 0; i < 10; i++)
+        {
+            Console.Error.WriteLine ($"{nextGameBoards[i].score} {nextGameBoards[i].GetBuildString()}");
         }
 
     }
@@ -480,7 +523,7 @@ class Move : Action
 {
     byte x, y, toX, toY, amount;
 
-    public Move(byte x, byte y, byte toX, byte toY, byte amount)
+    public Move (byte x, byte y, byte toX, byte toY, byte amount)
     {
         this.x = x;
         this.y = y;
@@ -500,22 +543,19 @@ class Move : Action
         Field field = board[x, y];
         field.units -= amount;
 
-
         if (newField.enemies)
         {
             if (amount < newField.units)
                 newField.units -= amount;
             else if (amount > newField.units)
             {
-                newField.units = (byte)(amount - newField.units);
+                newField.units = (byte) (amount - newField.units);
                 newField.mine = true;
                 newField.enemies = false;
             }
             else
             {
                 newField.units = 0;
-                newField.mine = false;
-                newField.enemies = false;
             }
         }
         else
@@ -526,6 +566,8 @@ class Move : Action
 
         board[x, y] = field;
         board[toX, toY] = newField;
+        //Console.Error.WriteLine ("Old :" + field.Info ());
+        //Console.Error.WriteLine ("New :" + newField.Info ());
     }
 
     public override string Build ()

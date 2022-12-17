@@ -2,7 +2,7 @@ class Move : Action
 {
     byte x, y, toX, toY, amount;
 
-    public Move(byte x, byte y, byte toX, byte toY, byte amount)
+    public Move (byte x, byte y, byte toX, byte toY, byte amount)
     {
         this.x = x;
         this.y = y;
@@ -21,7 +21,6 @@ class Move : Action
         }
         Field field = board[x, y];
         field.units -= amount;
-        
 
         if (newField.enemies)
         {
@@ -29,15 +28,13 @@ class Move : Action
                 newField.units -= amount;
             else if (amount > newField.units)
             {
-                newField.units = (byte)(amount - newField.units);
+                newField.units = (byte) (amount - newField.units);
                 newField.mine = true;
                 newField.enemies = false;
             }
             else
             {
                 newField.units = 0;
-                newField.mine = false;
-                newField.enemies = false;
             }
         }
         else
@@ -48,6 +45,8 @@ class Move : Action
 
         board[x, y] = field;
         board[toX, toY] = newField;
+        //Console.Error.WriteLine ("Old :" + field.Info ());
+        //Console.Error.WriteLine ("New :" + newField.Info ());
     }
 
     public override string Build ()

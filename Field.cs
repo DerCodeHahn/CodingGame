@@ -16,7 +16,12 @@ struct Field
     public bool SuroundingStays;
     public bool GoodSpawn;
 
-    public Field(byte x, byte y, byte scrapAmount, bool mine, bool enemies, byte units, bool recycler, bool canBuild, bool canSpawn, bool inRangeOfRecycler)
+    static (sbyte x, sbyte y) [] MoveDirections = new (sbyte, sbyte) []
+    {
+        (0, -1), (0, 1), (-1, 0), (1, 0)
+    };
+
+    public Field (byte x, byte y, byte scrapAmount, bool mine, bool enemies, byte units, bool recycler, bool canBuild, bool canSpawn, bool inRangeOfRecycler)
     {
         X = x;
         Y = y;
@@ -41,5 +46,43 @@ struct Field
     public string PositionLog ()
     {
         return $"{X} {Y}";
+    }
+
+    public string Info()
+    {
+        return $"{PositionLog()} scrap {scrapAmount} mine {mine} enemies {enemies} units {units} recycler {recycler} canBuild {canBuild}";
+    }
+
+
+    public List < (sbyte, sbyte) > GetNeighbourDirection ()
+    {
+        List < (sbyte, sbyte) > possibleDirection = new ();
+        foreach ((sbyte x, sbyte y) direction in MoveDirections)
+        {
+            byte x = (byte) (X + direction.x);
+            byte y = (byte) (Y + direction.y);
+
+            if (x > 0 && y > 0 && x < GameBoard.width && y < GameBoard.height)
+                possibleDirection.Add(direction);
+        }
+        return possibleDirection;
+    }
+
+    public List < (sbyte, sbyte) > GetPossibleMoveDirection (GameBoard board)
+    {
+        List < (sbyte, sbyte) > possibleDirection = new();
+        foreach ((sbyte x, sbyte y) direction in GetNeighbourDirection())
+        {
+            byte x = (byte) (X + direction.x);
+            byte y = (byte) (Y + direction.y);
+
+            Field targetField = board[x, y];
+            if (targetField.scrapAmount != 0 && !targetField.recycler)
+            {
+                possibleDirection.Add (direction);
+            }
+        }
+
+        return possibleDirection;
     }
 }

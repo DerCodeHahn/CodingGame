@@ -41,19 +41,27 @@ class GameBoard
 
     public GameBoard (GameBoard board)
     {
-        this.fields = board.fields;
+        fields = (Field[, ]) board.fields.Clone ();
         MyFields = board.MyFields;
-        EnemieFields = board.EnemieFields;
-        FreeField = board.FreeField;
-        MyUnits = board.MyUnits;
+        EnemieFields = new HashSet<Field> ();
+        FreeField = new HashSet<Field> ();
+        MyUnits = new List < (byte x, byte y, byte n) > ();
         CommandGettingHere = board.CommandGettingHere;
         MyMatter = board.MyMatter;
+        CurrentCommands = new List<Action> ();
     }
 
-    public static int SortByScore (GameBoard board1, GameBoard board2) { return board1.score.CompareTo (board2.score); }
+    public static int SortByScore (GameBoard board1, GameBoard board2)
+    {
+        return board1.score.CompareTo (board2.score) * -1;
+    }
 
     public void Analize ()
     {
+        MyFields.Clear ();
+        EnemieFields.Clear ();
+        FreeField.Clear ();
+
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
@@ -85,7 +93,7 @@ class GameBoard
 
         int pureScore = MyFields.Count - EnemieFields.Count;
         score = pureScore + verticalScore / 2;
-        Console.Error.WriteLine ($"Current Score : {score}");
+        //Console.Error.WriteLine ($"Current Score : {score} : MyFields {MyFields.Count} , Enemie {EnemieFields.Count}, MyUnits :{MyUnits.Count}");
     }
 
     int VerticalScore ()
@@ -127,27 +135,15 @@ class GameBoard
     {
         field.TotalCollectableScrap = field.scrapAmount;
 
-        if (field.Y - 1 >= 0)
+        foreach ((sbyte x, sbyte y) direction in field.GetNeighbourDirection ())
         {
-            CheckNeighbour (ref field, 0, -1);
-        }
-        if (field.Y + 1 < height)
-        {
-            CheckNeighbour (ref field, 0, 1);
-        }
-        if (field.X - 1 >= 0)
-        {
-            CheckNeighbour (ref field, -1, 0);
-        }
-        if (field.X + 1 < width)
-        {
-            CheckNeighbour (ref field, 1, 0);
+            CheckNeighbour (ref field, direction);
         }
     }
 
-    private void CheckNeighbour (ref Field field, sbyte xdelta, sbyte ydelta)
+    private void CheckNeighbour (ref Field field, (sbyte x, sbyte y) delta)
     {
-        Field neighbour = fields[field.X + xdelta, field.Y + ydelta];
+        Field neighbour = fields[field.X + delta.x, field.Y + delta.y];
         //Max Amount Clamped by own scrapAmount
         field.TotalCollectableScrap += Math.Clamp (neighbour.scrapAmount, (byte) 0, field.scrapAmount);
 
