@@ -2,23 +2,27 @@ using System.Numerics;
 
 struct Field
 {
-    public Vector2 position;
-    public int scrapAmount;
-    public int owner;
-    public int units;
+    public byte X;
+    public byte Y;
+    public byte scrapAmount;
+    public bool mine;
+    public bool enemies;
+    public byte units;
     public bool recycler;
     public bool canBuild;
     public bool canSpawn;
     public bool inRangeOfRecycler;
-
-    public int TotalCollectableScrap;
+    public byte TotalCollectableScrap;
     public bool SuroundingStays;
+    public bool GoodSpawn;
 
-    public Field (Vector2 position, int scrapAmount, int owner, int units, bool recycler, bool canBuild, bool canSpawn, bool inRangeOfRecycler)
+    public Field(byte x, byte y, byte scrapAmount, bool mine, bool enemies, byte units, bool recycler, bool canBuild, bool canSpawn, bool inRangeOfRecycler)
     {
-        this.position = position;
+        X = x;
+        Y = y;
         this.scrapAmount = scrapAmount;
-        this.owner = owner;
+        this.mine = mine;
+        this.enemies = enemies;
         this.units = units;
         this.recycler = recycler;
         this.canBuild = canBuild;
@@ -26,6 +30,7 @@ struct Field
         this.inRangeOfRecycler = inRangeOfRecycler;
         TotalCollectableScrap = 0;
         SuroundingStays = false;
+        GoodSpawn = false;
     }
 
     public static int SortByTotalCollectableScrap (Field x, Field y)
@@ -33,8 +38,8 @@ struct Field
         return x.TotalCollectableScrap.CompareTo (y.TotalCollectableScrap) * -1;
     }
 
-    public string Info ()
+    public string PositionLog ()
     {
-        return $"{Actions.Print(position)}  {TotalCollectableScrap}";
+        return $"{X} {Y}";
     }
 }
