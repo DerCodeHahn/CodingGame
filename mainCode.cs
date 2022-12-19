@@ -6,18 +6,14 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 
-public enum GamePhase
-{
-    Early,
-    Mid,
-    Late
-}
-
 class Player
 {
     public static sbyte PlayDirection = 1; // 1 to right , -1 to left
+    public static (byte x, byte y) MyBasePosition;
     public static byte middle;
     public static bool Init = false;
+    public static int GameStep = 0;
+
     static (sbyte, sbyte) [] MoveDirections = new (sbyte, sbyte) []
     {
         (0, -1), (0, 1), (-1, 0), (1, 0)
@@ -35,9 +31,12 @@ class Player
         middle = (byte) (width / 2);
         Field[, ] fields = new Field[width, height];
         int SurroundingCounter = 10;
+        GamePhase gamePhase = new EarlyGame ();
+
         // game loop
         while (true)
         {
+            GameStep ++;
             inputs = Console.ReadLine ().Split (' ');
             int myMatter = int.Parse (inputs[0]);
             int oppMatter = int.Parse (inputs[1]);
@@ -62,41 +61,18 @@ class Player
             }
 
             GameBoard gameBoard = new GameBoard (fields);
+            gameBoard.MyMatter = myMatter;
             gameBoard.Analize ();
 
             if (!Init)
                 FindMatchData (gameBoard);
 
-            string command = "";
-            HashSet<Field> alreadyTargets = new HashSet<Field> ();
+            gamePhase.Execute (gameBoard);
 
-            if (myMatter >= Consts.BuildCost)
-            {
-                List<Field> higherSurroundingFields = gameBoard.GetHigherSurroundingsFields ();
-                foreach (Field field in higherSurroundingFields)
-                {
-                    if (field.canBuild && SurroundingCounter > 0 && myMatter >= Consts.BuildCost && field.TotalCollectableScrap >= 20)
-                    {
-                        myMatter -= 10;
-                        SurroundingCounter--;
-                        command += ActionsBuilder.Build (field);
-                    }
-                }
-                int count = myMatter / Consts.BuildCost;
-                for (var i = 0; i < count; i++)
-                {
-                    List<Field> spawns = gameBoard.GetSpawnFields ();
-
-                    //command += Actions.Spawn (spawns[rnd.Next (spawns.Count)], 1);
-                    //complexity *= spawns.Count;
-                }
-
-            }
-            nextGameBoards.Clear();
+            //nextGameBoards.Clear();
             //gameBoard.CommandGettingHere = command;
-            PopulateGameBoards (gameBoard, 0);
 
-            Console.WriteLine (nextGameBoards[0].GetBuildString ());
+            //Console.WriteLine (nextGameBoards[0].GetBuildString ());
 
         }
     }
@@ -109,14 +85,14 @@ class Player
         {
             GameBoard next = new GameBoard (board);
             List<Action> moveCommands = new ();
-            foreach ((byte x, byte y, byte count) myUnit in board.MyUnits)
+            foreach ((Field field, byte count) myUnit in board.MyUnits)
             {
-                List < (sbyte, sbyte) > possibleDirection = board[myUnit.x, myUnit.y].GetPossibleMoveDirection (board);
+                List < (sbyte, sbyte) > possibleDirection = board[myUnit.field.X, myUnit.field.Y].GetPossibleMoveDirection (board);
                 if (possibleDirection.Count == 0)
                     continue;
                 (sbyte x, sbyte y) direction = possibleDirection[random.Next (possibleDirection.Count)];
-               
-                moveCommands.Add (new Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count));
+
+                moveCommands.Add (new Move (myUnit.field.X, myUnit.field.Y, (byte) (myUnit.field.X + direction.x), (byte) (myUnit.field.Y + direction.y), myUnit.count));
 
                 //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
             }
@@ -137,12 +113,19 @@ class Player
     private static void FindMatchData (GameBoard board)
     {
         Init = true;
-        Field someOfMyFields = board.MyFields.First ();
-        if (someOfMyFields.X >= middle)
+
+        byte x = 0, y = 0;
+        foreach (Field field in board.MyFields)
+        {
+            y += field.Y;
+            x += field.X;
+        }
+
+        MyBasePosition = ((byte) (x / 4), (byte) (y / 4));
+
+        if (MyBasePosition.x >= middle)
             PlayDirection = -1;
         else
             PlayDirection = 1;
-
-        Console.Error.WriteLine ($"PlayDirection {PlayDirection}");
     }
 }

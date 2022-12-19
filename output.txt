@@ -1,10 +1,10 @@
-using System.Text;
-using System.IO;
-using System.Collections;
 using System.Collections.Generic;
-using System;
-using System.Linq;
+using System.Collections;
 using System.Numerics;
+using System;
+using System.Text;
+using System.Linq;
+using System.IO;
 /*
 ActionsBuilder.cs
 */
@@ -30,7 +30,12 @@ static class ActionsBuilder
 
     public static string Move (Field from, Field to, int amount)
     {
-        return $"{MOVE} {amount} {from.PositionLog} {to.PositionLog};";
+        return $"{MOVE} {amount} {from.PositionLog()} {to.PositionLog()};";
+    }
+
+    public static string Move (Field from, int toX ,int toY , int amount)
+    {
+        return $"{MOVE} {amount} {from.PositionLog()} {toX} {toY};";
     }
 
     public static string Move (byte fromX ,byte fromY , byte toX ,byte toY , int amount)
@@ -164,9 +169,9 @@ class GameBoard
     public HashSet<Field> EnemieFields;
     public HashSet<Field> FreeField;
 
-    public byte MyMatter;
+    public int MyMatter;
 
-    public List < (byte x, byte y, byte n) > MyUnits; //x,y, count
+    public List < (Field field, byte n) > MyUnits; //x,y, count
 
     public string CommandGettingHere;
     public float score;
@@ -196,7 +201,7 @@ class GameBoard
         MyFields = board.MyFields;
         EnemieFields = new HashSet<Field> ();
         FreeField = new HashSet<Field> ();
-        MyUnits = new List < (byte x, byte y, byte n) > ();
+        MyUnits = new List < (Field field, byte n) > ();
         CommandGettingHere = board.CommandGettingHere;
         MyMatter = board.MyMatter;
         CurrentCommands = new List<Action> ();
@@ -227,7 +232,7 @@ class GameBoard
                 {
                     MyFields.Add (field);
                     if (field.units >= 1)
-                        MyUnits.Add ((field.X, field.Y, field.units));
+                        MyUnits.Add ((field, field.units));
                 }
                 else if (field.enemies)
                     EnemieFields.Add (field);
@@ -252,11 +257,11 @@ class GameBoard
         HashSet<Field> set = new (); // use Set for perfomance unique
         foreach (var unit in MyUnits)
         {
-            for (byte vPos = unit.x; vPos >= 0 && vPos < width; vPos = (byte) (vPos + Player.PlayDirection * -1)) // Looking back to my base
+            for (byte vPos = unit.field.X; vPos >= 0 && vPos < width; vPos = (byte) (vPos + Player.PlayDirection * -1)) // Looking back to my base
             {
-                if (fields[vPos, unit.y].scrapAmount != 0) // take fields wich i can own into account
+                if (fields[vPos, unit.field.Y].scrapAmount != 0) // take fields wich i can own into account
                 {
-                    bool isNew = set.Add (fields[vPos, unit.y]); // add unique to set
+                    bool isNew = set.Add (fields[vPos, unit.field.Y]); // add unique to set
                     if (isNew) // if we found one we can skip the rest of the line
                         break;
                 }
@@ -285,6 +290,7 @@ class GameBoard
     void GetSurroundingValues (ref Field field)
     {
         field.TotalCollectableScrap = field.scrapAmount;
+        field.SuroundingStays = true;
 
         foreach ((sbyte x, sbyte y) direction in field.GetNeighbourDirection ())
         {
@@ -361,18 +367,14 @@ mainCode.cs
 */
 
 
-public enum GamePhase
-{
-    Early,
-    Mid,
-    Late
-}
-
 class Player
 {
     public static sbyte PlayDirection = 1; // 1 to right , -1 to left
+    public static (byte x, byte y) MyBasePosition;
     public static byte middle;
     public static bool Init = false;
+    public static int GameStep = 0;
+
     static (sbyte, sbyte) [] MoveDirections = new (sbyte, sbyte) []
     {
         (0, -1), (0, 1), (-1, 0), (1, 0)
@@ -390,9 +392,12 @@ class Player
         middle = (byte) (width / 2);
         Field[, ] fields = new Field[width, height];
         int SurroundingCounter = 10;
+        GamePhase gamePhase = new EarlyGame ();
+
         // game loop
         while (true)
         {
+            GameStep ++;
             inputs = Console.ReadLine ().Split (' ');
             int myMatter = int.Parse (inputs[0]);
             int oppMatter = int.Parse (inputs[1]);
@@ -417,41 +422,18 @@ class Player
             }
 
             GameBoard gameBoard = new GameBoard (fields);
+            gameBoard.MyMatter = myMatter;
             gameBoard.Analize ();
 
             if (!Init)
                 FindMatchData (gameBoard);
 
-            string command = "";
-            HashSet<Field> alreadyTargets = new HashSet<Field> ();
+            gamePhase.Execute (gameBoard);
 
-            if (myMatter >= Consts.BuildCost)
-            {
-                List<Field> higherSurroundingFields = gameBoard.GetHigherSurroundingsFields ();
-                foreach (Field field in higherSurroundingFields)
-                {
-                    if (field.canBuild && SurroundingCounter > 0 && myMatter >= Consts.BuildCost && field.TotalCollectableScrap >= 20)
-                    {
-                        myMatter -= 10;
-                        SurroundingCounter--;
-                        command += ActionsBuilder.Build (field);
-                    }
-                }
-                int count = myMatter / Consts.BuildCost;
-                for (var i = 0; i < count; i++)
-                {
-                    List<Field> spawns = gameBoard.GetSpawnFields ();
-
-                    //command += Actions.Spawn (spawns[rnd.Next (spawns.Count)], 1);
-                    //complexity *= spawns.Count;
-                }
-
-            }
-            nextGameBoards.Clear();
+            //nextGameBoards.Clear();
             //gameBoard.CommandGettingHere = command;
-            PopulateGameBoards (gameBoard, 0);
 
-            Console.WriteLine (nextGameBoards[0].GetBuildString ());
+            //Console.WriteLine (nextGameBoards[0].GetBuildString ());
 
         }
     }
@@ -464,14 +446,14 @@ class Player
         {
             GameBoard next = new GameBoard (board);
             List<Action> moveCommands = new ();
-            foreach ((byte x, byte y, byte count) myUnit in board.MyUnits)
+            foreach ((Field field, byte count) myUnit in board.MyUnits)
             {
-                List < (sbyte, sbyte) > possibleDirection = board[myUnit.x, myUnit.y].GetPossibleMoveDirection (board);
+                List < (sbyte, sbyte) > possibleDirection = board[myUnit.field.X, myUnit.field.Y].GetPossibleMoveDirection (board);
                 if (possibleDirection.Count == 0)
                     continue;
                 (sbyte x, sbyte y) direction = possibleDirection[random.Next (possibleDirection.Count)];
 
-                moveCommands.Add (new Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count));
+                moveCommands.Add (new Move (myUnit.field.X, myUnit.field.Y, (byte) (myUnit.field.X + direction.x), (byte) (myUnit.field.Y + direction.y), myUnit.count));
 
                 //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
             }
@@ -492,13 +474,48 @@ class Player
     private static void FindMatchData (GameBoard board)
     {
         Init = true;
-        Field someOfMyFields = board.MyFields.First ();
-        if (someOfMyFields.X >= middle)
+
+        byte x = 0, y = 0;
+        foreach (Field field in board.MyFields)
+        {
+            y += field.Y;
+            x += field.X;
+        }
+
+        MyBasePosition = ((byte) (x / 4), (byte) (y / 4));
+
+        if (MyBasePosition.x >= middle)
             PlayDirection = -1;
         else
             PlayDirection = 1;
+    }
+}
 
-        Console.Error.WriteLine ($"PlayDirection {PlayDirection}");
+
+/*
+Settings.cs
+*/
+
+static class Settings
+{
+    public static float maxTimeForCalc = 48;
+}
+
+
+/*
+UTIL.cs
+*/
+
+static class UTIL
+{
+    public static int Distance (Field a, Field b)
+    {
+        return Math.Abs(a.X - b.X) +  Math.Abs(a.X - b.X);
+    }
+
+    public static int Distance (Field a, (int X, int Y) b)
+    {
+        return Math.Abs(a.X - b.X) +  Math.Abs(a.X - b.X);
     }
 }
 
@@ -573,6 +590,174 @@ class Move : Action
     public override string Build ()
     {
         return ActionsBuilder.Move (x, y, toX, toY, amount);
+    }
+}
+
+
+/*
+GamePhase\EarlyGame.cs
+*/
+
+class EarlyGame : GamePhase
+{
+    string command = "";
+
+    public override void Execute (GameBoard gameBoard)
+    {
+        base.Execute(gameBoard);
+        command = "";
+
+        BuildSpeedUps ();
+        BuildArmee ();
+        Move ();
+        Console.WriteLine (command);
+    }
+
+    void BuildSpeedUps ()
+    {
+        if (gameBoard.MyMatter >= Consts.BuildCost)
+        {
+            List<Field> higherSurroundingFields = gameBoard.GetHigherSurroundingsFields ();
+            foreach (Field field in higherSurroundingFields)
+            {
+                if (field.canBuild && gameBoard.MyMatter >= Consts.BuildCost && field.TotalCollectableScrap >= 20)
+                {
+                    gameBoard.MyMatter -= 10;
+                    command += ActionsBuilder.Build (field);
+                }
+            }
+        }
+    }
+
+    void BuildArmee ()
+    {
+        if (gameBoard.MyMatter >= Consts.BuildCost)
+        {
+            int max = rowMappedFields.Keys.Max();
+            int min = rowMappedFields.Keys.Min();
+
+            int bestIndexMax = Player.PlayDirection == 1 ? rowMappedFields[max].Count - 1: 0;
+            int bestIndexMin = Player.PlayDirection == 1 ? rowMappedFields[min].Count - 1: 0;
+
+            bool canSpawnOnBothSides = gameBoard.MyMatter >= Consts.BuildCost * 2;
+            bool maxRowFree = (max != GameBoard.height - 1);
+            bool minRowFree = (min != 0);
+
+            Console.Error.WriteLine($"in {max} von {GameBoard.height - 1} = free {maxRowFree}");
+            if(maxRowFree)
+                if(canSpawnOnBothSides || !canSpawnOnBothSides && Player.GameStep % 2 == 0)
+                    command += ActionsBuilder.Spawn (rowMappedFields[max][bestIndexMax], 1);
+
+            if(minRowFree)
+                if(canSpawnOnBothSides || !canSpawnOnBothSides && Player.GameStep % 2 == 1 && minRowFree)
+                    command += ActionsBuilder.Spawn (rowMappedFields[min][bestIndexMin], 1);
+
+
+
+
+        }
+    }
+
+    void Move ()
+    {
+        foreach (List<Field> fields in rowMappedUnits.Values)
+        {
+            bool first = true;
+            if (Player.PlayDirection == 1)
+                fields.Reverse();
+            foreach (Field field in fields)
+            {
+                int AwayCenterDirection = field.Y < Player.MyBasePosition.y ? -1 : 1;
+                for (int i = 0; i < field.units; i++)
+                {
+                    //TODO LOOP as long as Fields are not possible
+                    if (first)
+                    {
+                        first = false;
+                        command += ActionsBuilder.Move(field, field.X + Player.PlayDirection, field.Y, 1);
+                    }
+                    else
+                    {
+                        command += ActionsBuilder.Move(field, field.X, field.Y + AwayCenterDirection, 1);
+                    }
+                }
+            }
+        }
+
+        //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
+    }
+
+
+
+    protected override bool CheckTransition ()
+    {
+        return false;
+    }
+
+    protected override GamePhase Transition ()
+    {
+        return new EarlyGame ();
+    }
+}
+
+
+/*
+GamePhase\GamePhase.cs
+*/
+
+class GamePhase
+{
+    protected GameBoard gameBoard;
+
+
+    protected Dictionary<int, List<Field>> rowMappedUnits;
+    protected Dictionary<int, List<Field>> rowMappedFields;
+
+
+    virtual public void Execute (GameBoard board)
+    {
+        this.gameBoard = board;
+
+        rowMappedUnits = RowMapMyUnits();
+        rowMappedFields = RowMapMyFields();
+    }
+
+    virtual protected bool CheckTransition ()
+    {
+        return false;
+    }
+
+    virtual protected GamePhase Transition ()
+    {
+        return this;
+    }
+
+    protected Dictionary<int, List<Field>> RowMapMyUnits()
+    {
+        Dictionary<int, List<Field>> rowMappedUnits = new Dictionary<int, List<Field>>();
+
+        foreach ((Field field, byte count) myUnit in gameBoard.MyUnits)
+        {
+            if (!rowMappedUnits.ContainsKey(myUnit.field.Y))
+                rowMappedUnits.Add(myUnit.field.Y, new List<Field>());
+            rowMappedUnits[myUnit.field.Y].Add(myUnit.field);
+        }
+
+        return rowMappedUnits;
+    }
+
+    protected Dictionary<int, List<Field>> RowMapMyFields()
+    {
+        Dictionary<int, List<Field>> rowMappedUnits = new Dictionary<int, List<Field>>();
+
+        foreach (Field field in gameBoard.MyFields)
+        {
+            if (!rowMappedUnits.ContainsKey(field.Y))
+                rowMappedUnits.Add(field.Y, new List<Field>());
+            rowMappedUnits[field.Y].Add(field);
+        }
+
+        return rowMappedUnits;
     }
 }
 

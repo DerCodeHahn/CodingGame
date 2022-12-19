@@ -13,9 +13,9 @@ class GameBoard
     public HashSet<Field> EnemieFields;
     public HashSet<Field> FreeField;
 
-    public byte MyMatter;
+    public int MyMatter;
 
-    public List < (byte x, byte y, byte n) > MyUnits; //x,y, count
+    public List < (Field field, byte n) > MyUnits; //x,y, count
 
     public string CommandGettingHere;
     public float score;
@@ -45,7 +45,7 @@ class GameBoard
         MyFields = board.MyFields;
         EnemieFields = new HashSet<Field> ();
         FreeField = new HashSet<Field> ();
-        MyUnits = new List < (byte x, byte y, byte n) > ();
+        MyUnits = new List < (Field field, byte n) > ();
         CommandGettingHere = board.CommandGettingHere;
         MyMatter = board.MyMatter;
         CurrentCommands = new List<Action> ();
@@ -76,7 +76,7 @@ class GameBoard
                 {
                     MyFields.Add (field);
                     if (field.units >= 1)
-                        MyUnits.Add ((field.X, field.Y, field.units));
+                        MyUnits.Add ((field, field.units));
                 }
                 else if (field.enemies)
                     EnemieFields.Add (field);
@@ -101,11 +101,11 @@ class GameBoard
         HashSet<Field> set = new (); // use Set for perfomance unique
         foreach (var unit in MyUnits)
         {
-            for (byte vPos = unit.x; vPos >= 0 && vPos < width; vPos = (byte) (vPos + Player.PlayDirection * -1)) // Looking back to my base
+            for (byte vPos = unit.field.X; vPos >= 0 && vPos < width; vPos = (byte) (vPos + Player.PlayDirection * -1)) // Looking back to my base
             {
-                if (fields[vPos, unit.y].scrapAmount != 0) // take fields wich i can own into account
+                if (fields[vPos, unit.field.Y].scrapAmount != 0) // take fields wich i can own into account
                 {
-                    bool isNew = set.Add (fields[vPos, unit.y]); // add unique to set 
+                    bool isNew = set.Add (fields[vPos, unit.field.Y]); // add unique to set 
                     if (isNew) // if we found one we can skip the rest of the line
                         break;
                 }
@@ -134,6 +134,7 @@ class GameBoard
     void GetSurroundingValues (ref Field field)
     {
         field.TotalCollectableScrap = field.scrapAmount;
+        field.SuroundingStays = true;
 
         foreach ((sbyte x, sbyte y) direction in field.GetNeighbourDirection ())
         {
@@ -146,7 +147,7 @@ class GameBoard
         Field neighbour = fields[field.X + delta.x, field.Y + delta.y];
         //Max Amount Clamped by own scrapAmount
         field.TotalCollectableScrap += Math.Clamp (neighbour.scrapAmount, (byte) 0, field.scrapAmount);
-
+        
         if (!CheckForHigherSurrounding (field, neighbour))
             field.SuroundingStays = false;
 

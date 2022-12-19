@@ -20,7 +20,12 @@ static class ActionsBuilder
 
     public static string Move (Field from, Field to, int amount)
     {
-        return $"{MOVE} {amount} {from.PositionLog} {to.PositionLog};";
+        return $"{MOVE} {amount} {from.PositionLog()} {to.PositionLog()};";
+    }
+
+    public static string Move (Field from, int toX ,int toY , int amount)
+    {
+        return $"{MOVE} {amount} {from.PositionLog()} {toX} {toY};";
     }
 
     public static string Move (byte fromX ,byte fromY , byte toX ,byte toY , int amount)
