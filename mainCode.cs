@@ -9,7 +9,8 @@ using System.Text;
 class Player
 {
     public static sbyte PlayDirection = 1; // 1 to right , -1 to left
-    public static (byte x, byte y) MyBasePosition;
+    public static Field MyBasePosition;
+    public static Field EnemyBasePosition;
     public static byte middle;
     public static bool Init = false;
     public static int GameStep = 0;
@@ -36,7 +37,7 @@ class Player
         // game loop
         while (true)
         {
-            GameStep ++;
+            GameStep++;
             inputs = Console.ReadLine ().Split (' ');
             int myMatter = int.Parse (inputs[0]);
             int oppMatter = int.Parse (inputs[1]);
@@ -85,14 +86,14 @@ class Player
         {
             GameBoard next = new GameBoard (board);
             List<Action> moveCommands = new ();
-            foreach ((Field field, byte count) myUnit in board.MyUnits)
+            foreach (Field myUnit in board.MyUnits)
             {
-                List < (sbyte, sbyte) > possibleDirection = board[myUnit.field.X, myUnit.field.Y].GetPossibleMoveDirection (board);
+                List < (sbyte, sbyte) > possibleDirection = board[myUnit.X, myUnit.Y].GetPossibleMoveDirection (board);
                 if (possibleDirection.Count == 0)
                     continue;
                 (sbyte x, sbyte y) direction = possibleDirection[random.Next (possibleDirection.Count)];
 
-                moveCommands.Add (new Move (myUnit.field.X, myUnit.field.Y, (byte) (myUnit.field.X + direction.x), (byte) (myUnit.field.Y + direction.y), myUnit.count));
+                moveCommands.Add (new Move (myUnit.X, myUnit.Y, (byte) (myUnit.X + direction.x), (byte) (myUnit.Y + direction.y), myUnit.units));
 
                 //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
             }
@@ -113,17 +114,15 @@ class Player
     private static void FindMatchData (GameBoard board)
     {
         Init = true;
+        foreach (Field field in board.EnemieFields)
+            if (field.units == 0)
+                EnemyBasePosition = field;
 
-        byte x = 0, y = 0;
         foreach (Field field in board.MyFields)
-        {
-            y += field.Y;
-            x += field.X;
-        }
+            if (field.units == 0)
+                MyBasePosition = field;
 
-        MyBasePosition = ((byte) (x / 4), (byte) (y / 4));
-
-        if (MyBasePosition.x >= middle)
+        if (MyBasePosition.X >= middle)
             PlayDirection = -1;
         else
             PlayDirection = 1;

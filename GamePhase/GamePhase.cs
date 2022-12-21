@@ -29,11 +29,11 @@ class GamePhase
     {
         Dictionary<int, List<Field>> rowMappedUnits = new Dictionary<int, List<Field>>();
 
-        foreach ((Field field, byte count) myUnit in gameBoard.MyUnits)
+        foreach (Field myUnit in gameBoard.MyUnits)
         {
-            if (!rowMappedUnits.ContainsKey(myUnit.field.Y))
-                rowMappedUnits.Add(myUnit.field.Y, new List<Field>());
-            rowMappedUnits[myUnit.field.Y].Add(myUnit.field);
+            if (!rowMappedUnits.ContainsKey(myUnit.Y))
+                rowMappedUnits.Add(myUnit.Y, new List<Field>());
+            rowMappedUnits[myUnit.Y].Add(myUnit);
         }
 
         return rowMappedUnits;

@@ -1,10 +1,10 @@
-using System.Collections.Generic;
-using System.Collections;
 using System.Numerics;
 using System;
-using System.Text;
 using System.Linq;
+using System.Collections;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 /*
 ActionsBuilder.cs
 */
@@ -171,7 +171,7 @@ class GameBoard
 
     public int MyMatter;
 
-    public List < (Field field, byte n) > MyUnits; //x,y, count
+    public List <Field> MyUnits;
 
     public string CommandGettingHere;
     public float score;
@@ -201,7 +201,7 @@ class GameBoard
         MyFields = board.MyFields;
         EnemieFields = new HashSet<Field> ();
         FreeField = new HashSet<Field> ();
-        MyUnits = new List < (Field field, byte n) > ();
+        MyUnits = new List < Field > ();
         CommandGettingHere = board.CommandGettingHere;
         MyMatter = board.MyMatter;
         CurrentCommands = new List<Action> ();
@@ -232,7 +232,7 @@ class GameBoard
                 {
                     MyFields.Add (field);
                     if (field.units >= 1)
-                        MyUnits.Add ((field, field.units));
+                        MyUnits.Add ((field));
                 }
                 else if (field.enemies)
                     EnemieFields.Add (field);
@@ -257,11 +257,11 @@ class GameBoard
         HashSet<Field> set = new (); // use Set for perfomance unique
         foreach (var unit in MyUnits)
         {
-            for (byte vPos = unit.field.X; vPos >= 0 && vPos < width; vPos = (byte) (vPos + Player.PlayDirection * -1)) // Looking back to my base
+            for (byte vPos = unit.X; vPos >= 0 && vPos < width; vPos = (byte) (vPos + Player.PlayDirection * -1)) // Looking back to my base
             {
-                if (fields[vPos, unit.field.Y].scrapAmount != 0) // take fields wich i can own into account
+                if (fields[vPos, unit.Y].scrapAmount != 0) // take fields wich i can own into account
                 {
-                    bool isNew = set.Add (fields[vPos, unit.field.Y]); // add unique to set
+                    bool isNew = set.Add (fields[vPos, unit.Y]); // add unique to set
                     if (isNew) // if we found one we can skip the rest of the line
                         break;
                 }
@@ -370,7 +370,8 @@ mainCode.cs
 class Player
 {
     public static sbyte PlayDirection = 1; // 1 to right , -1 to left
-    public static (byte x, byte y) MyBasePosition;
+    public static Field MyBasePosition;
+    public static Field EnemyBasePosition;
     public static byte middle;
     public static bool Init = false;
     public static int GameStep = 0;
@@ -397,7 +398,7 @@ class Player
         // game loop
         while (true)
         {
-            GameStep ++;
+            GameStep++;
             inputs = Console.ReadLine ().Split (' ');
             int myMatter = int.Parse (inputs[0]);
             int oppMatter = int.Parse (inputs[1]);
@@ -446,14 +447,14 @@ class Player
         {
             GameBoard next = new GameBoard (board);
             List<Action> moveCommands = new ();
-            foreach ((Field field, byte count) myUnit in board.MyUnits)
+            foreach (Field myUnit in board.MyUnits)
             {
-                List < (sbyte, sbyte) > possibleDirection = board[myUnit.field.X, myUnit.field.Y].GetPossibleMoveDirection (board);
+                List < (sbyte, sbyte) > possibleDirection = board[myUnit.X, myUnit.Y].GetPossibleMoveDirection (board);
                 if (possibleDirection.Count == 0)
                     continue;
                 (sbyte x, sbyte y) direction = possibleDirection[random.Next (possibleDirection.Count)];
 
-                moveCommands.Add (new Move (myUnit.field.X, myUnit.field.Y, (byte) (myUnit.field.X + direction.x), (byte) (myUnit.field.Y + direction.y), myUnit.count));
+                moveCommands.Add (new Move (myUnit.X, myUnit.Y, (byte) (myUnit.X + direction.x), (byte) (myUnit.Y + direction.y), myUnit.units));
 
                 //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
             }
@@ -474,17 +475,15 @@ class Player
     private static void FindMatchData (GameBoard board)
     {
         Init = true;
+        foreach (Field field in board.EnemieFields)
+            if (field.units == 0)
+                EnemyBasePosition = field;
 
-        byte x = 0, y = 0;
         foreach (Field field in board.MyFields)
-        {
-            y += field.Y;
-            x += field.X;
-        }
+            if (field.units == 0)
+                MyBasePosition = field;
 
-        MyBasePosition = ((byte) (x / 4), (byte) (y / 4));
-
-        if (MyBasePosition.x >= middle)
+        if (MyBasePosition.X >= middle)
             PlayDirection = -1;
         else
             PlayDirection = 1;
@@ -604,12 +603,12 @@ class EarlyGame : GamePhase
 
     public override void Execute (GameBoard gameBoard)
     {
-        base.Execute(gameBoard);
+        base.Execute (gameBoard);
         command = "";
 
         BuildSpeedUps ();
         BuildArmee ();
-        Move ();
+        MoveFromAttackPoint ();
         Console.WriteLine (command);
     }
 
@@ -633,29 +632,78 @@ class EarlyGame : GamePhase
     {
         if (gameBoard.MyMatter >= Consts.BuildCost)
         {
-            int max = rowMappedFields.Keys.Max();
-            int min = rowMappedFields.Keys.Min();
+            int max = rowMappedFields.Keys.Max ();
+            int min = rowMappedFields.Keys.Min ();
 
-            int bestIndexMax = Player.PlayDirection == 1 ? rowMappedFields[max].Count - 1: 0;
-            int bestIndexMin = Player.PlayDirection == 1 ? rowMappedFields[min].Count - 1: 0;
+            int bestIndexMax = Player.PlayDirection == 1 ? rowMappedFields[max].Count - 1 : 0;
+            int bestIndexMin = Player.PlayDirection == 1 ? rowMappedFields[min].Count - 1 : 0;
 
             bool canSpawnOnBothSides = gameBoard.MyMatter >= Consts.BuildCost * 2;
             bool maxRowFree = (max != GameBoard.height - 1);
             bool minRowFree = (min != 0);
 
-            Console.Error.WriteLine($"in {max} von {GameBoard.height - 1} = free {maxRowFree}");
-            if(maxRowFree)
-                if(canSpawnOnBothSides || !canSpawnOnBothSides && Player.GameStep % 2 == 0)
+            Console.Error.WriteLine ($"in {max} von {GameBoard.height - 1} = free {maxRowFree}");
+            if (maxRowFree)
+                if (canSpawnOnBothSides || !canSpawnOnBothSides && Player.GameStep % 2 == 0)
+                    //if (!gameBoard.MyUnits.Contains (rowMappedFields[max][bestIndexMax]))
                     command += ActionsBuilder.Spawn (rowMappedFields[max][bestIndexMax], 1);
 
-            if(minRowFree)
-                if(canSpawnOnBothSides || !canSpawnOnBothSides && Player.GameStep % 2 == 1 && minRowFree)
+            if (minRowFree)
+                if (canSpawnOnBothSides || !canSpawnOnBothSides && Player.GameStep % 2 == 1 && minRowFree)
+                    //if (!gameBoard.MyUnits.Contains (rowMappedFields[min][bestIndexMin]))
                     command += ActionsBuilder.Spawn (rowMappedFields[min][bestIndexMin], 1);
 
-
-
-
         }
+    }
+
+    void MoveFromAttackPoint ()
+    {
+        Dictionary<Field, int> AlreadySelected = new Dictionary<Field, int> ();
+        //TODO : loop from center to borders
+        Field AttackPoint = gameBoard[Player.middle, Player.MyBasePosition.Y];
+        Console.Error.WriteLine ($"base at {Player.MyBasePosition.Y}: {AttackPoint.PositionLog()}");
+
+        Field bestAttackField = Player.MyBasePosition;
+        int minDistance = 100;
+        foreach (Field unit in gameBoard.MyUnits)
+        {
+            if (AlreadySelected.ContainsKey (unit) && AlreadySelected[unit] <= 0)
+                continue;
+            int distance = L2Distance (AttackPoint, unit);
+            Console.Error.WriteLine ($"{unit.PositionLog()} in {distance}");
+            if (distance < minDistance)
+            {
+                bestAttackField = unit;
+                minDistance = distance;
+            }
+        }
+        foreach (Field spawn in gameBoard.GetSpawnFields ())
+        {
+            int distance = L2Distance (AttackPoint, spawn) + 2;
+            if (distance < minDistance)
+            {
+                bestAttackField = spawn;
+                minDistance = distance;
+            }
+        }
+        Console.Error.WriteLine ($" Best Field {bestAttackField.PositionLog()} ");
+        bool foundMoveFieldBefore = AlreadySelected.ContainsKey (bestAttackField);
+        if (bestAttackField.units != 0 && (foundMoveFieldBefore && AlreadySelected[bestAttackField] < bestAttackField.units) || !foundMoveFieldBefore)
+        {
+            if (!foundMoveFieldBefore)
+                AlreadySelected.Add (bestAttackField, bestAttackField.units);
+            AlreadySelected[bestAttackField]--;
+            command += ActionsBuilder.Move (bestAttackField, AttackPoint, 1);
+        }
+        else if (bestAttackField.units == 0 || foundMoveFieldBefore && AlreadySelected[bestAttackField] == bestAttackField.units)
+        {
+            command += ActionsBuilder.Spawn (bestAttackField, 1);
+        }
+    }
+
+    int L2Distance (Field field, Field other)
+    {
+        return Math.Abs (field.X - other.X) + Math.Abs (field.Y - other.Y);
     }
 
     void Move ()
@@ -664,21 +712,31 @@ class EarlyGame : GamePhase
         {
             bool first = true;
             if (Player.PlayDirection == 1)
-                fields.Reverse();
+                fields.Reverse ();
+
             foreach (Field field in fields)
             {
-                int AwayCenterDirection = field.Y < Player.MyBasePosition.y ? -1 : 1;
+                int AwayCenterDirection = Math.Clamp (field.Y.CompareTo (Player.MyBasePosition.Y), -1, 1);
+                Console.Error.WriteLine ($"base at {Player.MyBasePosition.Y}: {field.PositionLog() } {AwayCenterDirection}");
                 for (int i = 0; i < field.units; i++)
                 {
                     //TODO LOOP as long as Fields are not possible
                     if (first)
                     {
                         first = false;
-                        command += ActionsBuilder.Move(field, field.X + Player.PlayDirection, field.Y, 1);
+                        command += ActionsBuilder.Move (field, field.X + Player.PlayDirection, field.Y, 1);
                     }
                     else
                     {
-                        command += ActionsBuilder.Move(field, field.X, field.Y + AwayCenterDirection, 1);
+                        first = true;
+                        //Assume the way is blocked so search
+                        Field TargetField = gameBoard[field.X, field.Y + AwayCenterDirection];
+                        bool found = FindNextFreeFieldInRow (TargetField, out Field newTarget);
+                        if (found)
+                            command += ActionsBuilder.Move (field, field.X, field.Y + AwayCenterDirection, 1);
+                        else
+                            Console.Error.WriteLine ("EndReached");
+
                     }
                 }
             }
@@ -687,7 +745,20 @@ class EarlyGame : GamePhase
         //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
     }
 
-
+    bool FindNextFreeFieldInRow (Field field, out Field newTarget)
+    {
+        newTarget = field;
+        for (int x = field.X; x >= 0 && x < GameBoard.width; x += Player.PlayDirection)
+        {
+            Field TargetField = gameBoard[x, field.Y];
+            if (TargetField.mine || TargetField.scrapAmount == 0)
+            {
+                newTarget = TargetField;
+                return true;
+            }
+        }
+        return false;
+    }
 
     protected override bool CheckTransition ()
     {
@@ -736,11 +807,11 @@ class GamePhase
     {
         Dictionary<int, List<Field>> rowMappedUnits = new Dictionary<int, List<Field>>();
 
-        foreach ((Field field, byte count) myUnit in gameBoard.MyUnits)
+        foreach (Field myUnit in gameBoard.MyUnits)
         {
-            if (!rowMappedUnits.ContainsKey(myUnit.field.Y))
-                rowMappedUnits.Add(myUnit.field.Y, new List<Field>());
-            rowMappedUnits[myUnit.field.Y].Add(myUnit.field);
+            if (!rowMappedUnits.ContainsKey(myUnit.Y))
+                rowMappedUnits.Add(myUnit.Y, new List<Field>());
+            rowMappedUnits[myUnit.Y].Add(myUnit);
         }
 
         return rowMappedUnits;
