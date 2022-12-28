@@ -13,7 +13,7 @@
 				{
 					"match": ".cs",
 					"isAsync": true,
-					"cmd": "python combine.py"
+					"cmd": "/usr/bin/python3 combine.py"
 				}
 			]
 		},

@@ -1,40 +1,39 @@
 class EarlyGame : GamePhase
 {
-    string command = "";
 
-    public override void Execute (GameBoard gameBoard)
+
+    public override void Execute(GameBoard gameBoard)
     {
-        base.Execute (gameBoard);
-        command = "";
+        base.Execute(gameBoard);
 
-        BuildSpeedUps ();
-        BuildArmee ();
-        MoveFromAttackPoint ();
-        Console.WriteLine (command);
+        BuildSpeedUps();
+        MoveFastestAttackPoint();
+
+        Console.WriteLine(command);
     }
 
-    void BuildSpeedUps ()
+    void BuildSpeedUps()
     {
         if (gameBoard.MyMatter >= Consts.BuildCost)
         {
-            List<Field> higherSurroundingFields = gameBoard.GetHigherSurroundingsFields ();
+            List<Field> higherSurroundingFields = gameBoard.GetHigherSurroundingsFields();
             foreach (Field field in higherSurroundingFields)
             {
                 if (field.canBuild && gameBoard.MyMatter >= Consts.BuildCost && field.TotalCollectableScrap >= 20)
                 {
                     gameBoard.MyMatter -= 10;
-                    command += ActionsBuilder.Build (field);
+                    command += ActionsBuilder.Build(field);
                 }
             }
         }
     }
 
-    void BuildArmee ()
+    void BuildArmee()
     {
         if (gameBoard.MyMatter >= Consts.BuildCost)
         {
-            int max = rowMappedFields.Keys.Max ();
-            int min = rowMappedFields.Keys.Min ();
+            int max = rowMappedFields.Keys.Max();
+            int min = rowMappedFields.Keys.Min();
 
             int bestIndexMax = Player.PlayDirection == 1 ? rowMappedFields[max].Count - 1 : 0;
             int bestIndexMin = Player.PlayDirection == 1 ? rowMappedFields[min].Count - 1 : 0;
@@ -43,100 +42,148 @@ class EarlyGame : GamePhase
             bool maxRowFree = (max != GameBoard.height - 1);
             bool minRowFree = (min != 0);
 
-            Console.Error.WriteLine ($"in {max} von {GameBoard.height - 1} = free {maxRowFree}");
+            Console.Error.WriteLine($"in {max} von {GameBoard.height - 1} = free {maxRowFree}");
             if (maxRowFree)
                 if (canSpawnOnBothSides || !canSpawnOnBothSides && Player.GameStep % 2 == 0)
                     //if (!gameBoard.MyUnits.Contains (rowMappedFields[max][bestIndexMax]))
-                    command += ActionsBuilder.Spawn (rowMappedFields[max][bestIndexMax], 1);
+                    command += ActionsBuilder.Spawn(rowMappedFields[max][bestIndexMax], 1);
 
             if (minRowFree)
                 if (canSpawnOnBothSides || !canSpawnOnBothSides && Player.GameStep % 2 == 1 && minRowFree)
                     //if (!gameBoard.MyUnits.Contains (rowMappedFields[min][bestIndexMin]))
-                    command += ActionsBuilder.Spawn (rowMappedFields[min][bestIndexMin], 1);
+                    command += ActionsBuilder.Spawn(rowMappedFields[min][bestIndexMin], 1);
 
         }
     }
 
-    void MoveFromAttackPoint ()
+    void MoveFastestAttackPoint()
     {
-        Dictionary<Field, int> AlreadySelected = new Dictionary<Field, int> ();
-        //TODO : loop from center to borders
-        Field AttackPoint = gameBoard[Player.middle, Player.MyBasePosition.Y];
-        Console.Error.WriteLine ($"base at {Player.MyBasePosition.Y}: {AttackPoint.PositionLog()}");
+        Dictionary<Field, int> AlreadySelectedUnits = new Dictionary<Field, int>();
+        Dictionary<Field, int> NotSelectedUnits = new Dictionary<Field, int>(gameBoard.MyUnits.Count);
 
-        Field bestAttackField = Player.MyBasePosition;
-        int minDistance = 100;
-        foreach (Field unit in gameBoard.MyUnits)
+        foreach (Field field in gameBoard.MyUnits)
         {
-            if (AlreadySelected.ContainsKey (unit) && AlreadySelected[unit] <= 0)
+            NotSelectedUnits.Add(field, field.units);
+        }
+        Console.Error.WriteLine("Update AttackLine");
+        EasyUpdateAttackLine();
+        // toDO send all other to the next field / front
+        
+        // Find Point Symetry Attack Line
+        // Update Frontline by unit movement
+        //
+        foreach (Field attackPoint in Player.AttackLine)
+        {
+            bool canSpawn = gameBoard.MyMatter >= Consts.BuildCost;
+            Field bestAttackField = base.FindBestMoveOrSpawn(attackPoint, AlreadySelectedUnits, out Field moveTarget, canSpawn);
+            if (attackPoint == bestAttackField)
                 continue;
-            int distance = L2Distance (AttackPoint, unit);
-            Console.Error.WriteLine ($"{unit.PositionLog()} in {distance}");
-            if (distance < minDistance)
+            bool found = AlreadySelectedUnits.TryGetValue(bestAttackField, out int sofarControlled);
+            Console.Error.WriteLine($" Best Field {bestAttackField.PositionLog()} to {attackPoint.PositionLog()} {sofarControlled}");
+            if (bestAttackField.units >= sofarControlled)
             {
-                bestAttackField = unit;
-                minDistance = distance;
+                if (!AlreadySelectedUnits.Keys.Contains(bestAttackField))
+                    AlreadySelectedUnits.Add(bestAttackField, 0);
+                AlreadySelectedUnits[bestAttackField]++;
+                
+                UpdateNotSelected(NotSelectedUnits, bestAttackField);
+
+                command += ActionsBuilder.Move(bestAttackField, moveTarget, 1);
+            }
+            else
+            {
+                gameBoard.MyMatter -= Consts.BuildCost;
+                command += ActionsBuilder.Spawn(bestAttackField, 1);
             }
         }
-        foreach (Field spawn in gameBoard.GetSpawnFields ())
+
+        foreach (var field in NotSelectedUnits)
         {
-            int distance = L2Distance (AttackPoint, spawn) + 2;
-            if (distance < minDistance)
+            if (field.Value >= 1)
             {
-                bestAttackField = spawn;
-                minDistance = distance;
+                //TODO : Search for next Enmy or Free Field
+                command += ActionsBuilder.Move(field.Key, field.Key.X, field.Key.Y, field.Value);
             }
-        }
-        Console.Error.WriteLine ($" Best Field {bestAttackField.PositionLog()} ");
-        bool foundMoveFieldBefore = AlreadySelected.ContainsKey (bestAttackField);
-        if (bestAttackField.units != 0 && (foundMoveFieldBefore && AlreadySelected[bestAttackField] < bestAttackField.units) || !foundMoveFieldBefore)
-        {
-            if (!foundMoveFieldBefore)
-                AlreadySelected.Add (bestAttackField, bestAttackField.units);
-            AlreadySelected[bestAttackField]--;
-            command += ActionsBuilder.Move (bestAttackField, AttackPoint, 1);
-        }
-        else if (bestAttackField.units == 0 || foundMoveFieldBefore && AlreadySelected[bestAttackField] == bestAttackField.units)
-        {
-            command += ActionsBuilder.Spawn (bestAttackField, 1);
         }
     }
 
-    int L2Distance (Field field, Field other)
+    private static void UpdateNotSelected(Dictionary<Field, int> NotSelectedUnits, Field bestAttackField)
     {
-        return Math.Abs (field.X - other.X) + Math.Abs (field.Y - other.Y);
+        bool foundNotSelected = NotSelectedUnits.TryGetValue(bestAttackField, out int count);
+        if (foundNotSelected)
+            NotSelectedUnits[bestAttackField]--;
+        else
+        {
+            foreach (var field in NotSelectedUnits.Keys)
+                if (field == bestAttackField)
+                    NotSelectedUnits[field]--;
+        }
     }
 
-    void Move ()
+    int L2Distance(Field field, Field other)
+    {
+        return Math.Abs(field.X - other.X) + Math.Abs(field.Y - other.Y);
+    }
+
+    void EasyUpdateAttackLine()
+    {
+        if(OneUnitReachedAttackLine())
+        {
+            Console.Error.WriteLine("Move AttackLine");
+            List<Field> newAttackLine = new List<Field>();
+            foreach (Field item in Player.AttackLine)
+            {
+                Field newField = gameBoard[item.X + Player.PlayDirection, item.Y];
+                newAttackLine.Add(newField);
+            }
+            Player.AttackLine = newAttackLine;
+        }
+    }
+
+    bool OneUnitReachedAttackLine()
+    {
+        foreach (Field f in gameBoard.MyUnits)
+        {
+            if (Player.AttackLine.Contains(f))
+            {
+                Console.Error.WriteLine("Found");
+                return true;
+            }
+        }
+        Console.Error.WriteLine("Not Found");
+        return false;
+    }
+
+    void Move()
     {
         foreach (List<Field> fields in rowMappedUnits.Values)
         {
             bool first = true;
             if (Player.PlayDirection == 1)
-                fields.Reverse ();
+                fields.Reverse();
 
             foreach (Field field in fields)
             {
-                int AwayCenterDirection = Math.Clamp (field.Y.CompareTo (Player.MyBasePosition.Y), -1, 1);
-                Console.Error.WriteLine ($"base at {Player.MyBasePosition.Y}: {field.PositionLog() } {AwayCenterDirection}");
+                int AwayCenterDirection = Math.Clamp(field.Y.CompareTo(Player.MyBasePosition.Y), -1, 1);
+                Console.Error.WriteLine($"base at {Player.MyBasePosition.Y}: {field.PositionLog()} {AwayCenterDirection}");
                 for (int i = 0; i < field.units; i++)
                 {
                     //TODO LOOP as long as Fields are not possible
                     if (first)
                     {
                         first = false;
-                        command += ActionsBuilder.Move (field, field.X + Player.PlayDirection, field.Y, 1);
+                        command += ActionsBuilder.Move(field, field.X + Player.PlayDirection, field.Y, 1);
                     }
                     else
                     {
                         first = true;
                         //Assume the way is blocked so search
                         Field TargetField = gameBoard[field.X, field.Y + AwayCenterDirection];
-                        bool found = FindNextFreeFieldInRow (TargetField, out Field newTarget);
+                        bool found = FindNextFreeFieldInRow(TargetField, out Field newTarget);
                         if (found)
-                            command += ActionsBuilder.Move (field, field.X, field.Y + AwayCenterDirection, 1);
+                            command += ActionsBuilder.Move(field, field.X, field.Y + AwayCenterDirection, 1);
                         else
-                            Console.Error.WriteLine ("EndReached");
+                            Console.Error.WriteLine("EndReached");
 
                     }
                 }
@@ -146,7 +193,7 @@ class EarlyGame : GamePhase
         //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
     }
 
-    bool FindNextFreeFieldInRow (Field field, out Field newTarget)
+    bool FindNextFreeFieldInRow(Field field, out Field newTarget)
     {
         newTarget = field;
         for (int x = field.X; x >= 0 && x < GameBoard.width; x += Player.PlayDirection)
@@ -161,13 +208,25 @@ class EarlyGame : GamePhase
         return false;
     }
 
-    protected override bool CheckTransition ()
+    public override bool CheckTransition(GameBoard gameBoard)
     {
+        List<Field> myBorderFields = new List<Field>(25);
+        foreach (Field field in gameBoard.MyFields)
+        {
+            foreach ((sbyte x, sbyte y) direction in field.GetPossibleMoveDirection(gameBoard))
+            {
+                Field borderField = gameBoard[field.X + direction.x, field.Y + direction.y];
+                if (borderField.enemies)
+                    return true;
+            }
+        }
         return false;
     }
 
-    protected override GamePhase Transition ()
+    public override GamePhase Transition()
     {
-        return new EarlyGame ();
+        MidGame midGame = new MidGame();
+        midGame.Init();
+        return midGame;
     }
 }
