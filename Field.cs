@@ -73,9 +73,9 @@ struct Field
         return $"{PositionLog()} scrap {scrapAmount} mine {mine} enemies {enemies} units {units} recycler {recycler} canBuild {canBuild}";
     }
 
-    public List<(sbyte, sbyte)> GetPossibleMoveDirection(GameBoard board)
+    public List<Field> GetPossibleMoveDirection(GameBoard board)
     {
-        List<(sbyte, sbyte)> possibleDirection = new();
+        List<Field> possibleDirection = new();
         Direction[] MoveDirections = Player.PlayDirection == -1 ? MoveDirectionsLeftToRight : MoveDirectionsRightToLeft;
         foreach (Direction direction in MoveDirections)
         {
@@ -86,12 +86,14 @@ struct Field
             Field targetField = board[x, y];
             if (targetField.scrapAmount != 0 && !targetField.recycler)
             {
-                possibleDirection.Add(direction);
+                possibleDirection.Add(targetField);
             }
         }
 
         return possibleDirection;
     }
+
+    
 
     static public bool operator ==(Field self, Field other)
     {

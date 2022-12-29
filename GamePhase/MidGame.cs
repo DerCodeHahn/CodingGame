@@ -83,9 +83,9 @@ class MidGame : GamePhase
         {
             for (int i = 0; i < GameBoard.height; i++)
             {
-                if (rowMappedUnits.ContainsKey(i))
+                if (myRowMappedUnits.ContainsKey(i))
                 {
-                    Field closestUnit = rowMappedUnits[i][0];
+                    Field closestUnit = myRowMappedUnits[i][0];
                     Console.Error.WriteLine("Close Top Border With " + closestUnit.PositionLog());
 
                     controlledUnits.Add(closestUnit, 1);
@@ -99,9 +99,9 @@ class MidGame : GamePhase
         {
             for (int i = GameBoard.height - 1; i >= 0; i--)
             {
-                if (rowMappedUnits.ContainsKey(i))
+                if (myRowMappedUnits.ContainsKey(i))
                 {
-                    Field closestUnit = rowMappedUnits[i][0];
+                    Field closestUnit = myRowMappedUnits[i][0];
                     Console.Error.WriteLine("Close Bot Border With " + closestUnit.PositionLog());
                     controlledUnits.Add(closestUnit, 1);
                     command += ActionsBuilder.Move(closestUnit, closestUnit.X, GameBoard.height - 1, 1);
@@ -136,9 +136,8 @@ class MidGame : GamePhase
         if (unitsLeft <= 0)
             return;
         //Attack Nearest Enemy Field
-        foreach ((sbyte x, sbyte y) direction in unit.GetPossibleMoveDirection(gameBoard))
+        foreach (Field checkField in unit.GetPossibleMoveDirection(gameBoard))
         {
-            Field checkField = gameBoard[unit.X + direction.x, unit.Y + direction.y];
             disscoverdFields.Add(checkField);
             visistedFields.Add(checkField);
             if (checkField.enemies)
@@ -159,9 +158,9 @@ class MidGame : GamePhase
             foreach (Field f in currentFields)
             {
                 visistedFields.Add(f);
-                foreach ((sbyte x, sbyte y) direction in f.GetPossibleMoveDirection(gameBoard))
+                foreach (Field checkField in f.GetPossibleMoveDirection(gameBoard))
                 {
-                    Field checkField = gameBoard[f.X + direction.x, f.Y + direction.y];
+                    //TODO: If two enemy fields are possible try to splitt up
                     if (checkField.enemies)
                     {
                         unitsLeft -= unit.Pressure;

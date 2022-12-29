@@ -6,7 +6,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 //8236584684887423000 wide big nopoint
-
+//4922755871518232000 big point flank
 class Player
 {
     public static sbyte PlayDirection = 1; // 1 to right , -1 to left
@@ -71,14 +71,13 @@ class Player
             if (!Init)
             {
                 FindMatchData(gameBoard);
-                gamePhase.Init();
             }
             //UpdateAttackLine(gameBoard);
             if (gamePhase.CheckTransition(gameBoard))
                 gamePhase = gamePhase.Transition();
 
-            foreach (Field attackPoint in AttackLine)
-                Console.Error.WriteLine($"AttackPoint {attackPoint.PositionLog()}");
+            // foreach (Field attackPoint in AttackLine)
+            //     Console.Error.WriteLine($"AttackPoint {attackPoint.PositionLog()}");
             // if (gamePhase.CheckTransition())
             //     gamePhase = gamePhase.Transition();
             gamePhase.Execute(gameBoard);
@@ -144,9 +143,8 @@ class Player
 
             foreach (Field item in myCurrentFields)
             {
-                foreach((sbyte x, sbyte y) direction in item.GetPossibleMoveDirection(gameBoard))
+                foreach(Field newField in item.GetPossibleMoveDirection(gameBoard))
                 {
-                    Field newField = gameBoard[item.X + direction.x, item.Y + direction.y];
                     if(!myVisitedFields.Contains(newField))
                     {
                         if(newField.enemies )
@@ -161,9 +159,8 @@ class Player
             }
             foreach (Field item in enemyCurrentFields)
             {
-                foreach((sbyte x, sbyte y) direction in item.GetPossibleMoveDirection(gameBoard))
+                foreach(Field newField in item.GetPossibleMoveDirection(gameBoard))
                 {
-                    Field newField = gameBoard[item.X + direction.x, item.Y + direction.y];
                     if(!enemyVisitedFields.Contains(newField)&&!myVisitedFields.Contains(newField))
                     {
                         if(newField.mine)
@@ -208,12 +205,12 @@ class Player
             List<Action> moveCommands = new();
             foreach (Field myUnit in board.MyUnits)
             {
-                List<(sbyte, sbyte)> possibleDirection = board[myUnit.X, myUnit.Y].GetPossibleMoveDirection(board);
+                List<Field> possibleDirection = board[myUnit.X, myUnit.Y].GetPossibleMoveDirection(board);
                 if (possibleDirection.Count == 0)
                     continue;
-                (sbyte x, sbyte y) direction = possibleDirection[random.Next(possibleDirection.Count)];
+                Field direction = possibleDirection[random.Next(possibleDirection.Count)];
 
-                moveCommands.Add(new Move(myUnit.X, myUnit.Y, (byte)(myUnit.X + direction.x), (byte)(myUnit.Y + direction.y), myUnit.units));
+                //moveCommands.Add(new Move(myUnit.X, myUnit.Y, (byte)(myUnit.X + direction.x), (byte)(myUnit.Y + direction.y), myUnit.units));
 
                 //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
             }

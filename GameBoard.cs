@@ -19,6 +19,7 @@ class GameBoard
     public int MyMatter;
 
     public List<Field> MyUnits;
+    public List<Field> EnemyUnits;
 
     public string CommandGettingHere;
     public float score;
@@ -45,6 +46,7 @@ class GameBoard
         EnemieBorderFields = new();
         CommandGettingHere = "";
         MyMatter = 0;
+        EnemyUnits = new();
     }
 
     public GameBoard(GameBoard board)
@@ -95,7 +97,11 @@ class GameBoard
                     }
                 }
                 else if (field.enemies)
+                {
+                    if(field.units >= 1)
+                        EnemyUnits.Add(field);
                     EnemieFields.Add(field);
+                }
                 else
                     FreeField.Add(field);
             }
@@ -153,18 +159,17 @@ class GameBoard
         field.TotalCollectableScrap = field.scrapAmount;
         field.SuroundingStays = true;
         field.Pressure = (field.mine) ? field.units : -field.units;
-        foreach ((sbyte x, sbyte y) direction in field.GetPossibleMoveDirection(this))
+        foreach (Field direction in field.GetPossibleMoveDirection(this))
         {
             CheckNeighbour(ref field, direction);
         }
     }
 
-    private void CheckNeighbour(ref Field field, (sbyte x, sbyte y) delta)
+    private void CheckNeighbour(ref Field field, Field neighbour)
     {
-        Field neighbour = fields[field.X + delta.x, field.Y + delta.y];
         //Max Amount Clamped by own scrapAmount
         field.TotalCollectableScrap += Math.Clamp(neighbour.scrapAmount, (byte)0, field.scrapAmount);
-        
+
         if (field.mine && neighbour.enemies)
             field.Pressure -= neighbour.units;
         if (field.enemies && neighbour.mine)

@@ -1,11 +1,11 @@
-using System.Diagnostics.CodeAnalysis;
-using System.Text;
-using System.Collections.Generic;
-using System.Linq;
 using System.Collections;
 using System;
-using System.IO;
+using System.Text;
+using System.Linq;
 using System.Numerics;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
+using System.Collections.Generic;
 /*
 UTIL.cs
 */
@@ -117,9 +117,9 @@ struct Field
         return $"{PositionLog()} scrap {scrapAmount} mine {mine} enemies {enemies} units {units} recycler {recycler} canBuild {canBuild}";
     }
 
-    public List<(sbyte, sbyte)> GetPossibleMoveDirection(GameBoard board)
+    public List<Field> GetPossibleMoveDirection(GameBoard board)
     {
-        List<(sbyte, sbyte)> possibleDirection = new();
+        List<Field> possibleDirection = new();
         Direction[] MoveDirections = Player.PlayDirection == -1 ? MoveDirectionsLeftToRight : MoveDirectionsRightToLeft;
         foreach (Direction direction in MoveDirections)
         {
@@ -130,12 +130,14 @@ struct Field
             Field targetField = board[x, y];
             if (targetField.scrapAmount != 0 && !targetField.recycler)
             {
-                possibleDirection.Add(direction);
+                possibleDirection.Add(targetField);
             }
         }
 
         return possibleDirection;
     }
+
+
 
     static public bool operator ==(Field self, Field other)
     {
@@ -193,7 +195,7 @@ mainCode.cs
 */
 
 //8236584684887423000 wide big nopoint
-
+//4922755871518232000 big point flank
 class Player
 {
     public static sbyte PlayDirection = 1; // 1 to right , -1 to left
@@ -258,14 +260,13 @@ class Player
             if (!Init)
             {
                 FindMatchData(gameBoard);
-                gamePhase.Init();
             }
             //UpdateAttackLine(gameBoard);
             if (gamePhase.CheckTransition(gameBoard))
                 gamePhase = gamePhase.Transition();
 
-            foreach (Field attackPoint in AttackLine)
-                Console.Error.WriteLine($"AttackPoint {attackPoint.PositionLog()}");
+            // foreach (Field attackPoint in AttackLine)
+            //     Console.Error.WriteLine($"AttackPoint {attackPoint.PositionLog()}");
             // if (gamePhase.CheckTransition())
             //     gamePhase = gamePhase.Transition();
             gamePhase.Execute(gameBoard);
@@ -331,9 +332,8 @@ class Player
 
             foreach (Field item in myCurrentFields)
             {
-                foreach((sbyte x, sbyte y) direction in item.GetPossibleMoveDirection(gameBoard))
+                foreach(Field newField in item.GetPossibleMoveDirection(gameBoard))
                 {
-                    Field newField = gameBoard[item.X + direction.x, item.Y + direction.y];
                     if(!myVisitedFields.Contains(newField))
                     {
                         if(newField.enemies )
@@ -348,9 +348,8 @@ class Player
             }
             foreach (Field item in enemyCurrentFields)
             {
-                foreach((sbyte x, sbyte y) direction in item.GetPossibleMoveDirection(gameBoard))
+                foreach(Field newField in item.GetPossibleMoveDirection(gameBoard))
                 {
-                    Field newField = gameBoard[item.X + direction.x, item.Y + direction.y];
                     if(!enemyVisitedFields.Contains(newField)&&!myVisitedFields.Contains(newField))
                     {
                         if(newField.mine)
@@ -395,12 +394,12 @@ class Player
             List<Action> moveCommands = new();
             foreach (Field myUnit in board.MyUnits)
             {
-                List<(sbyte, sbyte)> possibleDirection = board[myUnit.X, myUnit.Y].GetPossibleMoveDirection(board);
+                List<Field> possibleDirection = board[myUnit.X, myUnit.Y].GetPossibleMoveDirection(board);
                 if (possibleDirection.Count == 0)
                     continue;
-                (sbyte x, sbyte y) direction = possibleDirection[random.Next(possibleDirection.Count)];
+                Field direction = possibleDirection[random.Next(possibleDirection.Count)];
 
-                moveCommands.Add(new Move(myUnit.X, myUnit.Y, (byte)(myUnit.X + direction.x), (byte)(myUnit.Y + direction.y), myUnit.units));
+                //moveCommands.Add(new Move(myUnit.X, myUnit.Y, (byte)(myUnit.X + direction.x), (byte)(myUnit.Y + direction.y), myUnit.units));
 
                 //moveCommands += ActionsBuilder.Move (myUnit.x, myUnit.y, (byte) (myUnit.x + direction.x), (byte) (myUnit.y + direction.y), myUnit.count);
             }
@@ -536,6 +535,7 @@ class GameBoard
     public int MyMatter;
 
     public List<Field> MyUnits;
+    public List<Field> EnemyUnits;
 
     public string CommandGettingHere;
     public float score;
@@ -562,6 +562,7 @@ class GameBoard
         EnemieBorderFields = new();
         CommandGettingHere = "";
         MyMatter = 0;
+        EnemyUnits = new();
     }
 
     public GameBoard(GameBoard board)
@@ -612,7 +613,11 @@ class GameBoard
                     }
                 }
                 else if (field.enemies)
+                {
+                    if(field.units >= 1)
+                        EnemyUnits.Add(field);
                     EnemieFields.Add(field);
+                }
                 else
                     FreeField.Add(field);
             }
@@ -670,15 +675,14 @@ class GameBoard
         field.TotalCollectableScrap = field.scrapAmount;
         field.SuroundingStays = true;
         field.Pressure = (field.mine) ? field.units : -field.units;
-        foreach ((sbyte x, sbyte y) direction in field.GetPossibleMoveDirection(this))
+        foreach (Field direction in field.GetPossibleMoveDirection(this))
         {
             CheckNeighbour(ref field, direction);
         }
     }
 
-    private void CheckNeighbour(ref Field field, (sbyte x, sbyte y) delta)
+    private void CheckNeighbour(ref Field field, Field neighbour)
     {
-        Field neighbour = fields[field.X + delta.x, field.Y + delta.y];
         //Max Amount Clamped by own scrapAmount
         field.TotalCollectableScrap += Math.Clamp(neighbour.scrapAmount, (byte)0, field.scrapAmount);
 
@@ -934,9 +938,9 @@ class MidGame : GamePhase
         {
             for (int i = 0; i < GameBoard.height; i++)
             {
-                if (rowMappedUnits.ContainsKey(i))
+                if (myRowMappedUnits.ContainsKey(i))
                 {
-                    Field closestUnit = rowMappedUnits[i][0];
+                    Field closestUnit = myRowMappedUnits[i][0];
                     Console.Error.WriteLine("Close Top Border With " + closestUnit.PositionLog());
 
                     controlledUnits.Add(closestUnit, 1);
@@ -950,9 +954,9 @@ class MidGame : GamePhase
         {
             for (int i = GameBoard.height - 1; i >= 0; i--)
             {
-                if (rowMappedUnits.ContainsKey(i))
+                if (myRowMappedUnits.ContainsKey(i))
                 {
-                    Field closestUnit = rowMappedUnits[i][0];
+                    Field closestUnit = myRowMappedUnits[i][0];
                     Console.Error.WriteLine("Close Bot Border With " + closestUnit.PositionLog());
                     controlledUnits.Add(closestUnit, 1);
                     command += ActionsBuilder.Move(closestUnit, closestUnit.X, GameBoard.height - 1, 1);
@@ -987,9 +991,8 @@ class MidGame : GamePhase
         if (unitsLeft <= 0)
             return;
         //Attack Nearest Enemy Field
-        foreach ((sbyte x, sbyte y) direction in unit.GetPossibleMoveDirection(gameBoard))
+        foreach (Field checkField in unit.GetPossibleMoveDirection(gameBoard))
         {
-            Field checkField = gameBoard[unit.X + direction.x, unit.Y + direction.y];
             disscoverdFields.Add(checkField);
             visistedFields.Add(checkField);
             if (checkField.enemies)
@@ -1010,9 +1013,9 @@ class MidGame : GamePhase
             foreach (Field f in currentFields)
             {
                 visistedFields.Add(f);
-                foreach ((sbyte x, sbyte y) direction in f.GetPossibleMoveDirection(gameBoard))
+                foreach (Field checkField in f.GetPossibleMoveDirection(gameBoard))
                 {
-                    Field checkField = gameBoard[f.X + direction.x, f.Y + direction.y];
+                    //TODO: If two enemy fields are possible try to splitt up
                     if (checkField.enemies)
                     {
                         unitsLeft -= unit.Pressure;
@@ -1049,16 +1052,30 @@ GamePhase/EarlyGame.cs
 
 class EarlyGame : GamePhase
 {
+    Dictionary<Field, int> AlreadySelectedUnits = new Dictionary<Field, int>();
+    Dictionary<Field, int> NotSelectedUnits = new Dictionary<Field, int>();
 
 
     public override void Execute(GameBoard gameBoard)
     {
         base.Execute(gameBoard);
+        AlreadySelectedUnits.Clear();
+        NotSelectedUnits.Clear();
+
+        foreach (Field field in gameBoard.MyUnits)
+            NotSelectedUnits.Add(field, field.units);
+
 
         BuildSpeedUps();
+        FlankDetection();
+        MoveIntoFreeFieldForward();
         MoveFastestAttackPoint();
 
         Console.WriteLine(command);
+    }
+
+    void MoveIntoFreeFieldForward(){
+
     }
 
     void BuildSpeedUps()
@@ -1075,6 +1092,98 @@ class EarlyGame : GamePhase
                 }
             }
         }
+    }
+    void FlankDetection()
+    {
+        int mostmyTopRow = myRowMappedUnits.Keys.Min();
+        int enemieTopUnit = enemyRowMappedUnits.Keys.Min();
+        Console.Error.WriteLine($"My Top{mostmyTopRow} other Top{enemieTopUnit}");
+
+        if (mostmyTopRow == enemieTopUnit)
+            return;
+        Console.Error.WriteLine("Flank in Progress?");
+        int myDefendingUnitIndex = Player.PlayDirection == 1 ? myRowMappedUnits[mostmyTopRow].Count - 1 : 0;
+        Field DefendingUnit = myRowMappedUnits[mostmyTopRow][myDefendingUnitIndex];
+
+        int AttackingUnitIndex = Player.PlayDirection == 1 ? enemyRowMappedUnits[enemieTopUnit].Count - 1 : 0;
+        Field AttackingUnit = enemyRowMappedUnits[enemieTopUnit][AttackingUnitIndex];
+        Console.Error.WriteLine($"Attacking Unit{AttackingUnit.PositionLog()} Def{DefendingUnit.PositionLog()}");
+
+        HashSet<Field> myVisitedFields = new();
+        HashSet<Field> myCurrentFields = new();
+        HashSet<Field> myInspectList = new();
+
+        HashSet<Field> enemyVisitedFields = new();
+        HashSet<Field> enemyCurrentFields = new();
+        HashSet<Field> enemyInspectList = new();
+
+        Dictionary<Field, int> EnemyStepCounter = new();
+
+        myCurrentFields.Add(DefendingUnit);
+        enemyCurrentFields.Add(AttackingUnit);
+        int step = 0;
+        while (enemyCurrentFields.Count > 0)
+        {
+            foreach (Field f in enemyCurrentFields)
+            {
+                enemyVisitedFields.Add(f);
+                Console.Error.Write($"{f.PositionLog()} , ");
+                EnemyStepCounter.Add(f, step);
+                foreach (Field moveField in f.GetPossibleMoveDirection(gameBoard))
+                {
+                    if (!moveField.enemies && !enemyVisitedFields.Contains(moveField))
+                        enemyInspectList.Add(moveField);
+                }
+
+            }
+            step++;
+            enemyCurrentFields.Clear();
+
+            foreach (Field f in enemyInspectList)
+                enemyCurrentFields.Add(f);
+            enemyInspectList.Clear();
+        }
+        step = 0;
+        while (myCurrentFields.Count > 0)
+        {
+            foreach (Field f in myCurrentFields)
+            {
+                myVisitedFields.Add(f);
+                foreach (Field moveField in f.GetPossibleMoveDirection(gameBoard))
+                {
+                    if (!moveField.mine && !myVisitedFields.Contains(moveField))
+                        myInspectList.Add(moveField);
+
+                    if (EnemyStepCounter.ContainsKey(moveField))
+                    {
+                        int stepBalance = EnemyStepCounter[moveField] - step;
+                        if (stepBalance == 1 || stepBalance == 2)
+                        {
+                            Console.Error.WriteLine($"Defending at {moveField.PositionLog()}");
+                            DefendFlank(DefendingUnit, moveField);
+                            return;
+                        }
+                    }
+                }
+
+            }
+            step++;
+            myCurrentFields.Clear();
+            foreach (Field f in myInspectList)
+                myCurrentFields.Add(f);
+            myInspectList.Clear();
+        }
+        //Watch border Lines where enemy has units and i dont have tiles
+        //Add Counter on wich step wich field is reached
+        //Substract counter on how much step i can reach the field
+        // Sum is <0 im to late =0 collisition >0 im first
+    }
+
+    void DefendFlank(Field defendingUnit, Field defendField)
+    {
+        AlreadySelectedUnits.Add(defendingUnit, 1);
+        NotSelectedUnits[defendingUnit]--;
+        command += ActionsBuilder.Move(defendingUnit, defendField, 1);
     }
 
     void BuildArmee()
@@ -1107,14 +1216,8 @@ class EarlyGame : GamePhase
 
     void MoveFastestAttackPoint()
     {
-        Dictionary<Field, int> AlreadySelectedUnits = new Dictionary<Field, int>();
-        Dictionary<Field, int> NotSelectedUnits = new Dictionary<Field, int>(gameBoard.MyUnits.Count);
 
-        foreach (Field field in gameBoard.MyUnits)
-        {
-            NotSelectedUnits.Add(field, field.units);
-        }
-        Console.Error.WriteLine("Update AttackLine");
+        //Console.Error.WriteLine("Update AttackLine");
         EasyUpdateAttackLine();
         // toDO send all other to the next field / front
 
@@ -1176,9 +1279,9 @@ class EarlyGame : GamePhase
 
     void EasyUpdateAttackLine()
     {
-        if(OneUnitReachedAttackLine())
+        if (OneUnitReachedAttackLine())
         {
-            Console.Error.WriteLine("Move AttackLine");
+            //Console.Error.WriteLine("Move AttackLine");
             List<Field> newAttackLine = new List<Field>();
             foreach (Field item in Player.AttackLine)
             {
@@ -1205,7 +1308,7 @@ class EarlyGame : GamePhase
 
     void Move()
     {
-        foreach (List<Field> fields in rowMappedUnits.Values)
+        foreach (List<Field> fields in myRowMappedUnits.Values)
         {
             bool first = true;
             if (Player.PlayDirection == 1)
@@ -1262,9 +1365,8 @@ class EarlyGame : GamePhase
         List<Field> myBorderFields = new List<Field>(25);
         foreach (Field field in gameBoard.MyFields)
         {
-            foreach ((sbyte x, sbyte y) direction in field.GetPossibleMoveDirection(gameBoard))
+            foreach (Field borderField in field.GetPossibleMoveDirection(gameBoard))
             {
-                Field borderField = gameBoard[field.X + direction.x, field.Y + direction.y];
                 if (borderField.enemies)
                     return true;
             }
@@ -1275,7 +1377,6 @@ class EarlyGame : GamePhase
     public override GamePhase Transition()
     {
         MidGame midGame = new MidGame();
-        midGame.Init();
         return midGame;
     }
 }
@@ -1290,14 +1391,9 @@ class GamePhase
     protected string command = "";
     protected GameBoard gameBoard;
 
-    protected Dictionary<int, List<Field>> rowMappedUnits;
-    protected Dictionary<int, List<Field>> rowMappedFields;
-
-    public void Init()
-    {
-        rowMappedUnits = new Dictionary<int, List<Field>>(GameBoard.height);
-        rowMappedFields = new Dictionary<int, List<Field>>(GameBoard.height);
-    }
+    protected Dictionary<int, List<Field>> myRowMappedUnits = new (GameBoard.height);
+    protected Dictionary<int, List<Field>> enemyRowMappedUnits = new (GameBoard.height);
+    protected Dictionary<int, List<Field>> rowMappedFields = new (GameBoard.height);
 
     virtual public void Execute(GameBoard board)
     {
@@ -1305,6 +1401,7 @@ class GamePhase
 
         RowMapMyUnits();
         RowMapMyFields();
+        RowMapEnemyUnits();
         command = "";
     }
 
@@ -1320,13 +1417,24 @@ class GamePhase
 
     protected void RowMapMyUnits()
     {
-        rowMappedUnits.Clear();
+        myRowMappedUnits.Clear();
 
         foreach (Field myUnit in gameBoard.MyUnits)
         {
-            if (!rowMappedUnits.ContainsKey(myUnit.Y))
-                rowMappedUnits.Add(myUnit.Y, new List<Field>());
-            rowMappedUnits[myUnit.Y].Add(myUnit);
+            if (!myRowMappedUnits.ContainsKey(myUnit.Y))
+                myRowMappedUnits.Add(myUnit.Y, new List<Field>());
+            myRowMappedUnits[myUnit.Y].Add(myUnit);
+        }
+    }
+    protected void RowMapEnemyUnits()
+    {
+        enemyRowMappedUnits.Clear();
+
+        foreach (Field enemyUnit in gameBoard.EnemyUnits)
+        {
+            if (!enemyRowMappedUnits.ContainsKey(enemyUnit.Y))
+                enemyRowMappedUnits.Add(enemyUnit.Y, new List<Field>());
+            enemyRowMappedUnits[enemyUnit.Y].Add(enemyUnit);
         }
     }
 
@@ -1358,9 +1466,8 @@ class GamePhase
             foreach (Field field in currentFields)
             {
                 //Otp could have an Defensive Mode where Playdirection is take into account
-                foreach ((sbyte x, sbyte y) direction in field.GetPossibleMoveDirection(gameBoard))
+                foreach (Field checkField in field.GetPossibleMoveDirection(gameBoard))
                 {
-                    Field checkField = gameBoard[field.X + direction.x, field.Y + direction.y];
 
                     int openUnitCount = checkField.units;
                     if (AlreadySelectedUnits.Keys.Contains(checkField))

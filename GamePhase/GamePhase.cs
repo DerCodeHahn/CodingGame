@@ -3,14 +3,9 @@ class GamePhase
     protected string command = "";
     protected GameBoard gameBoard;
 
-    protected Dictionary<int, List<Field>> rowMappedUnits;
-    protected Dictionary<int, List<Field>> rowMappedFields;
-
-    public void Init()
-    {
-        rowMappedUnits = new Dictionary<int, List<Field>>(GameBoard.height);
-        rowMappedFields = new Dictionary<int, List<Field>>(GameBoard.height);
-    }
+    protected Dictionary<int, List<Field>> myRowMappedUnits = new (GameBoard.height);
+    protected Dictionary<int, List<Field>> enemyRowMappedUnits = new (GameBoard.height);
+    protected Dictionary<int, List<Field>> rowMappedFields = new (GameBoard.height);
 
     virtual public void Execute(GameBoard board)
     {
@@ -18,6 +13,7 @@ class GamePhase
 
         RowMapMyUnits();
         RowMapMyFields();
+        RowMapEnemyUnits();
         command = "";
     }
 
@@ -33,13 +29,24 @@ class GamePhase
 
     protected void RowMapMyUnits()
     {
-        rowMappedUnits.Clear();
+        myRowMappedUnits.Clear();
 
         foreach (Field myUnit in gameBoard.MyUnits)
         {
-            if (!rowMappedUnits.ContainsKey(myUnit.Y))
-                rowMappedUnits.Add(myUnit.Y, new List<Field>());
-            rowMappedUnits[myUnit.Y].Add(myUnit);
+            if (!myRowMappedUnits.ContainsKey(myUnit.Y))
+                myRowMappedUnits.Add(myUnit.Y, new List<Field>());
+            myRowMappedUnits[myUnit.Y].Add(myUnit);
+        }
+    }
+    protected void RowMapEnemyUnits()
+    {
+        enemyRowMappedUnits.Clear();
+
+        foreach (Field enemyUnit in gameBoard.EnemyUnits)
+        {
+            if (!enemyRowMappedUnits.ContainsKey(enemyUnit.Y))
+                enemyRowMappedUnits.Add(enemyUnit.Y, new List<Field>());
+            enemyRowMappedUnits[enemyUnit.Y].Add(enemyUnit);
         }
     }
 
@@ -71,9 +78,8 @@ class GamePhase
             foreach (Field field in currentFields)
             {
                 //Otp could have an Defensive Mode where Playdirection is take into account
-                foreach ((sbyte x, sbyte y) direction in field.GetPossibleMoveDirection(gameBoard))
+                foreach (Field checkField in field.GetPossibleMoveDirection(gameBoard))
                 {
-                    Field checkField = gameBoard[field.X + direction.x, field.Y + direction.y];
                     
                     int openUnitCount = checkField.units;
                     if (AlreadySelectedUnits.Keys.Contains(checkField))
