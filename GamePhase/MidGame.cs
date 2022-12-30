@@ -57,7 +57,7 @@ class MidGame : GamePhase
                 {
                     if(buildField.OffenceSpawn)
                         offenceSpawn.Add(buildField);
-                    else
+                    if(buildField.GoodSpawn)
                         spawnAtFree.Add(buildField);
                 }
                 else
@@ -187,7 +187,7 @@ class MidGame : GamePhase
         HashSet<Field> currentFields = new();
         HashSet<Field> visistedFields = new();
         bool found = controlledUnits.TryGetValue(unit, out int alreadyUsed);
-        int unitsLeft = unit.units - alreadyUsed;
+        int unitsLeft = (unit.units - alreadyUsed);
         if (unitsLeft <= 0)
             return;
         //Attack Nearest Enemy Field
@@ -195,12 +195,12 @@ class MidGame : GamePhase
         {
             disscoverdFields.Add(checkField);
             visistedFields.Add(checkField);
-            if (checkField.enemies)
+            if (checkField.enemies && unit.Pressure > 0)
             {
                 unitsLeft -= unit.Pressure;
                 command += ActionsBuilder.Move(unit, checkField, unit.Pressure);
-                if (unitsLeft <= 0)
-                    return;
+                
+                return;
             }
         }
 
@@ -210,6 +210,8 @@ class MidGame : GamePhase
         //Search for next Enemy field
         while (currentFields.Count > 0)
         {
+            if (unitsLeft <= 0)
+                    return;
             foreach (Field f in currentFields)
             {
                 visistedFields.Add(f);
@@ -227,6 +229,7 @@ class MidGame : GamePhase
                        !disscoverdFields.Contains(checkField))
                         disscoverdFields.Add(checkField);
                 }
+                
             }
             currentFields.Clear();
 
