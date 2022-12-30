@@ -12,19 +12,17 @@ class EarlyGame : GamePhase
 
         foreach (Field field in gameBoard.MyUnits)
             NotSelectedUnits.Add(field, field.units);
-        
+
 
         BuildSpeedUps();
         FlankDetection();
-        MoveIntoFreeFieldForward();
+        
         MoveFastestAttackPoint();
 
         Console.WriteLine(command);
     }
 
-    void MoveIntoFreeFieldForward(){
-        
-    }
+    
 
     void BuildSpeedUps()
     {
@@ -56,7 +54,7 @@ class EarlyGame : GamePhase
         int AttackingUnitIndex = Player.PlayDirection == 1 ? enemyRowMappedUnits[enemieTopUnit].Count - 1 : 0;
         Field AttackingUnit = enemyRowMappedUnits[enemieTopUnit][AttackingUnitIndex];
         Console.Error.WriteLine($"Attacking Unit{AttackingUnit.PositionLog()} Def{DefendingUnit.PositionLog()}");
-        
+
         HashSet<Field> myVisitedFields = new();
         HashSet<Field> myCurrentFields = new();
         HashSet<Field> myInspectList = new();
@@ -164,7 +162,7 @@ class EarlyGame : GamePhase
 
     void MoveFastestAttackPoint()
     {
-        
+
         //Console.Error.WriteLine("Update AttackLine");
         EasyUpdateAttackLine();
         // toDO send all other to the next field / front

@@ -8,6 +8,7 @@ class MidGame : GamePhase
         controlledUnits.Clear();
 
         BuildDefense();
+        //MoveIntoFreeFieldForward();
 
         DecideAction();
         if (command == "")
@@ -16,21 +17,51 @@ class MidGame : GamePhase
             Console.WriteLine(command);
     }
 
+    void MoveIntoFreeFieldForward()
+    {
+        foreach (Field field in gameBoard.MyUnits)
+        {
+            foreach (Field moveField in field.GetPossibleMoveDirection(gameBoard))
+            {
+                bool BackWards = field.X == moveField.X - Player.PlayDirection;
+                if (!BackWards && !moveField.mine && !moveField.enemies)
+                {
+                    if (!controlledUnits.ContainsKey(moveField))
+                        controlledUnits.Add(moveField, 0);
+                    controlledUnits[moveField] = field.units;
+                    command += ActionsBuilder.Move(field, moveField, field.units);
+                    Console.Error.WriteLine("Flank");
+                    continue;
+                }
+            }
+        }
+    }
+
     void BuildDefense()
     {
         List<Field> defenceBuildSpawn = new List<Field>();
         List<Field> offenceSpawn = new List<Field>();
+        List<Field> spawnAtFree = new();
         foreach (Field buildField in gameBoard.MyFields)
         {
-            if (buildField.GoodSpawn)
+            if (buildField.GoodSpawn|| buildField.OffenceSpawn)
             {
-                if (buildField.Pressure < 0 )
-                    if(buildField.canBuild)
+                if (buildField.Pressure < 0)
+                    if (buildField.canBuild)
                         defenceBuildSpawn.Add(buildField);
                     else
                         offenceSpawn.Add(buildField);
                 else if (buildField.Pressure == 0)
+                {
+                    if(buildField.OffenceSpawn)
+                        offenceSpawn.Add(buildField);
+                    else
+                        spawnAtFree.Add(buildField);
+                }
+                else
+                {
                     offenceSpawn.Add(buildField);
+                }
 
             }
 
@@ -47,12 +78,34 @@ class MidGame : GamePhase
         offenceSpawn.Sort(Field.SortByGameDirection);
         foreach (Field offence in offenceSpawn)
         {
+            Console.Error.WriteLine("OffenceSpawn" + offence.PositionLog());
+        }
+        
+        if(gameBoard.MyMatter >= Consts.BuildCost && offenceSpawn.Count != 0)
+        {
+            int spawnableUnits = Math.Max((gameBoard.MyMatter/10) / offenceSpawn.Count,1);
+            Console.Error.WriteLine(spawnableUnits + " " );
+            foreach (Field offence in offenceSpawn)
+            {
+                if (gameBoard.MyMatter < Consts.BuildCost)
+                    break;
+                Console.Error.WriteLine("OffenceSpawn At" + offence.PositionLog());
+                command += ActionsBuilder.Spawn(offence, spawnableUnits);
+                gameBoard.MyMatter -= Consts.BuildCost;
+            }
+        }
+
+        spawnAtFree.Sort(Field.SortByGameDirection);
+        foreach(Field field in spawnAtFree)
+        {
             if (gameBoard.MyMatter < Consts.BuildCost)
                 break;
-            
-            command += ActionsBuilder.Spawn(offence,offence.Pressure * -1 + 1);
+            Console.Error.WriteLine("Free Spawn At" + field.PositionLog());
+                
+            command += ActionsBuilder.Spawn(field, 1);
             gameBoard.MyMatter -= Consts.BuildCost;
         }
+        
     }
 
     void DecideAction()
@@ -114,7 +167,7 @@ class MidGame : GamePhase
     void Defence(Field unit)
     {
         int mustSpawn = unit.Pressure * -1;
-        if(Consts.BuildCost * mustSpawn <= gameBoard.MyMatter )
+        if (Consts.BuildCost * mustSpawn <= gameBoard.MyMatter)
         {
             gameBoard.MyMatter -= Consts.BuildCost * mustSpawn;
             command += ActionsBuilder.Spawn(unit, mustSpawn);

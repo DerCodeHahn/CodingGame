@@ -16,6 +16,7 @@ struct Field
     public byte TotalCollectableScrap;
     public bool SuroundingStays;
     public bool GoodSpawn;
+    public bool OffenceSpawn;
     public int Pressure;
 
 
@@ -43,6 +44,7 @@ struct Field
         TotalCollectableScrap = 0;
         SuroundingStays = false;
         GoodSpawn = false;
+        OffenceSpawn = false;
         Pressure = 0;
     }
 
