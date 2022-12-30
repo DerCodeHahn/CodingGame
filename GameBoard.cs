@@ -177,7 +177,7 @@ class GameBoard
 
         if (!CheckForHigherSurrounding(field, neighbour))
             field.SuroundingStays = false;
-        if(field.canSpawn && neighbour.enemies)
+        if(field.canSpawn && neighbour.enemies && !neighbour.recycler)
             field.OffenceSpawn = true;
         if (field.canSpawn && !neighbour.mine && !neighbour.enemies)
         {

@@ -8,7 +8,9 @@ class MidGame : GamePhase
         controlledUnits.Clear();
 
         BuildDefense();
-        //MoveIntoFreeFieldForward();
+        MoveIntoFreeFieldForward();
+        //TODO: keep an eye on overall Mattle to not get overrun
+        //TODO: improve flanking right now its not useable because of backwalk
 
         DecideAction();
         if (command == "")
@@ -23,7 +25,7 @@ class MidGame : GamePhase
         {
             foreach (Field moveField in field.GetPossibleMoveDirection(gameBoard))
             {
-                bool BackWards = field.X == moveField.X - Player.PlayDirection;
+                bool BackWards = field.X == moveField.X + Player.PlayDirection;
                 if (!BackWards && !moveField.mine && !moveField.enemies)
                 {
                     if (!controlledUnits.ContainsKey(moveField))
@@ -203,7 +205,7 @@ class MidGame : GamePhase
         }
 
         foreach (Field f in disscoverdFields)
-            currentFields.Add(f);
+            currentFields.Add(f); 
 
         //Search for next Enemy field
         while (currentFields.Count > 0)

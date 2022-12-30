@@ -1,10 +1,10 @@
-using System.Numerics;
 using System;
-using System.Text;
-using System.IO;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text;
+using System.IO;
+using System.Numerics;
 using System.Collections;
 /*
 UTIL.cs
@@ -695,7 +695,7 @@ class GameBoard
 
         if (!CheckForHigherSurrounding(field, neighbour))
             field.SuroundingStays = false;
-        if(field.canSpawn && neighbour.enemies)
+        if(field.canSpawn && neighbour.enemies && !neighbour.recycler)
             field.OffenceSpawn = true;
         if (field.canSpawn && !neighbour.mine && !neighbour.enemies)
         {
@@ -866,7 +866,9 @@ class MidGame : GamePhase
         controlledUnits.Clear();
 
         BuildDefense();
-        //MoveIntoFreeFieldForward();
+        MoveIntoFreeFieldForward();
+        //TODO: keep an eye on overall Mattle to not get overrun
+        //TODO: improve flanking right now its not useable because of backwalk
 
         DecideAction();
         if (command == "")
@@ -881,7 +883,7 @@ class MidGame : GamePhase
         {
             foreach (Field moveField in field.GetPossibleMoveDirection(gameBoard))
             {
-                bool BackWards = field.X == moveField.X - Player.PlayDirection;
+                bool BackWards = field.X == moveField.X + Player.PlayDirection;
                 if (!BackWards && !moveField.mine && !moveField.enemies)
                 {
                     if (!controlledUnits.ContainsKey(moveField))
