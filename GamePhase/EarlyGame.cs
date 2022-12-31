@@ -15,14 +15,15 @@ class EarlyGame : GamePhase
 
 
         BuildSpeedUps();
-        FlankDetection();
-        
+        FlankDetection(true);
+        FlankDetection(false);
+
         MoveFastestAttackPoint();
 
         Console.WriteLine(command);
     }
 
-    
+
 
     void BuildSpeedUps()
     {
@@ -39,11 +40,14 @@ class EarlyGame : GamePhase
             }
         }
     }
-    void FlankDetection()
+    void FlankDetection(bool Top)
     {
-        int mostmyTopRow = myRowMappedUnits.Keys.Min();
-        int enemieTopUnit = enemyRowMappedUnits.Keys.Min();
-        Console.Error.WriteLine($"My Top{mostmyTopRow} other Top{enemieTopUnit}");
+        int mostmyTopRow = Top ? myRowMappedUnits.Keys.Min() : myRowMappedUnits.Keys.Max();
+        int enemieTopUnit = Top ? enemyRowMappedUnits.Keys.Min() : enemyRowMappedUnits.Keys.Max();
+        if (Top)
+            Console.Error.WriteLine($"My Top{mostmyTopRow} other Top{enemieTopUnit}");
+        else
+            Console.Error.WriteLine($"My Bottom{mostmyTopRow} other Bottom{enemieTopUnit}");
 
         if (mostmyTopRow == enemieTopUnit)
             return;
@@ -68,18 +72,18 @@ class EarlyGame : GamePhase
         myCurrentFields.Add(DefendingUnit);
         enemyCurrentFields.Add(AttackingUnit);
         int step = 0;
+
         while (enemyCurrentFields.Count > 0)
         {
             foreach (Field f in enemyCurrentFields)
             {
                 enemyVisitedFields.Add(f);
-                Console.Error.Write($"{f.PositionLog()} , ");
                 EnemyStepCounter.Add(f, step);
-                foreach (Field moveField in f.GetPossibleMoveDirection(gameBoard))
-                {
-                    if (!moveField.enemies && !enemyVisitedFields.Contains(moveField))
-                        enemyInspectList.Add(moveField);
-                }
+                bool hasField = f.GetFieldInDirection(false, gameBoard,out Field moveField);
+                
+                if (!moveField.enemies && !enemyVisitedFields.Contains(moveField))
+                    enemyInspectList.Add(moveField);
+                
 
             }
             step++;
