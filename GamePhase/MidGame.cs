@@ -6,6 +6,7 @@ class MidGame : GamePhase
         base.Execute(gameBoard);
 
         controlledUnits.Clear();
+        CloseBorders(controlledUnits);
 
         BuildDefense();
         MoveIntoFreeFieldForward();
@@ -46,7 +47,7 @@ class MidGame : GamePhase
         List<Field> spawnAtFree = new();
         foreach (Field buildField in gameBoard.MyFields)
         {
-            if (buildField.GoodSpawn|| buildField.OffenceSpawn)
+            if (buildField.GoodSpawn || buildField.OffenceSpawn)
             {
                 if (buildField.Pressure < 0)
                     if (buildField.canBuild)
@@ -55,9 +56,9 @@ class MidGame : GamePhase
                         offenceSpawn.Add(buildField);
                 else if (buildField.Pressure == 0)
                 {
-                    if(buildField.OffenceSpawn)
+                    if (buildField.OffenceSpawn)
                         offenceSpawn.Add(buildField);
-                    if(buildField.GoodSpawn)
+                    if (buildField.GoodSpawn)
                         spawnAtFree.Add(buildField);
                 }
                 else
@@ -68,12 +69,17 @@ class MidGame : GamePhase
             }
 
         }
-        defenceBuildSpawn.Sort(Field.SortByPressure);
-        foreach (Field defence in defenceBuildSpawn)
+        //defenceBuildSpawn.Sort(Field.SortByPressure);
+        List<(Field,int)> DefenceValues = AnalysePointsOnRisk(defenceBuildSpawn);
+        foreach ((Field field,int pointLossScore) defence in DefenceValues)
+        {
+            Console.Error.WriteLine($"Position {defence.field.PositionLog()} with Score: {defence.pointLossScore}");
+        }
+        foreach ((Field field,int pointLossScore) defence in DefenceValues)
         {
             if (gameBoard.MyMatter < Consts.BuildCost)
                 break;
-            command += ActionsBuilder.Build(defence);
+            command += ActionsBuilder.Build(defence.field);
             gameBoard.MyMatter -= Consts.BuildCost;
         }
 
@@ -82,11 +88,11 @@ class MidGame : GamePhase
         {
             Console.Error.WriteLine("OffenceSpawn" + offence.PositionLog());
         }
-        
-        if(gameBoard.MyMatter >= Consts.BuildCost && offenceSpawn.Count != 0)
+
+        if (gameBoard.MyMatter >= Consts.BuildCost && offenceSpawn.Count != 0)
         {
-            int spawnableUnits = Math.Max((gameBoard.MyMatter/10) / offenceSpawn.Count,1);
-            Console.Error.WriteLine(spawnableUnits + " " );
+            int spawnableUnits = Math.Max((gameBoard.MyMatter / Consts.BuildCost) / offenceSpawn.Count, 1);
+            Console.Error.WriteLine(spawnableUnits + " ");
             foreach (Field offence in offenceSpawn)
             {
                 if (gameBoard.MyMatter < Consts.BuildCost)
@@ -98,22 +104,20 @@ class MidGame : GamePhase
         }
 
         spawnAtFree.Sort(Field.SortByGameDirection);
-        foreach(Field field in spawnAtFree)
+        foreach (Field field in spawnAtFree)
         {
             if (gameBoard.MyMatter < Consts.BuildCost)
                 break;
             Console.Error.WriteLine("Free Spawn At" + field.PositionLog());
-                
+
             command += ActionsBuilder.Spawn(field, 1);
             gameBoard.MyMatter -= Consts.BuildCost;
         }
-        
+
     }
 
     void DecideAction()
     {
-        CloseBorders(controlledUnits);
-
         foreach (Field unit in gameBoard.MyUnits)
         {
             if (unit.Pressure < 0)
@@ -132,8 +136,58 @@ class MidGame : GamePhase
         }
     }
 
+    List<(Field, int)> AnalysePointsOnRisk(List<Field> fields)
+    {
+        List<(Field, int)> pointsAtRisk = new();
+        HashSet<Field> fieldCounted = new();
+        foreach (Field defendPoint in fields)
+        {
+            fieldCounted.Clear();
+            fieldCounted.Add(defendPoint);
+            int points = 1; //the field it self
+
+            bool inbound = defendPoint.GetFieldInDirection(true, gameBoard, out Field fieldInAttackDirection);
+            bool horizontalAttack = inbound && fieldInAttackDirection.enemies && fieldInAttackDirection.units >= 1;
+            bool inboundDefend = defendPoint.GetFieldInDirection(false, gameBoard, out Field fieldInDefendDirection);
+            bool freeAreaBehindAttack = inboundDefend && !fieldInDefendDirection.enemies && !fieldInDefendDirection.mine;
+
+            foreach (Field buildAroundField in defendPoint.GetPossibleMoveDirection(gameBoard))
+            {
+                if (buildAroundField.canBuild && buildAroundField.mine)
+                {
+                    points++; // field where i build gets destroyed
+                    //check how much gets Destroyed by blocking
+                    foreach (Field checkMyField in buildAroundField.GetPossibleMoveDirection(gameBoard))
+                    {
+                        bool notDefendPoint = checkMyField != defendPoint;
+                        bool alreadyCounted = fieldCounted.Contains(checkMyField);
+                        if (checkMyField.mine && notDefendPoint && !alreadyCounted && buildAroundField.scrapAmount >= checkMyField.scrapAmount)
+                        {
+                            fieldCounted.Add(checkMyField);
+                            points++; // field gets destroyed 
+                        }
+                    }
+                }
+                else
+                {
+                    if (horizontalAttack && buildAroundField == fieldInDefendDirection && freeAreaBehindAttack)
+                        points += Player.PlayDirection == 1 ? GameBoard.width - buildAroundField.X : buildAroundField.X;
+                }
+                
+            }
+            if (horizontalAttack)
+                    points *= 2;
+            Console.Error.WriteLine($"DefendPoint {defendPoint.PositionLog()} would loose {points}");
+            pointsAtRisk.Add((defendPoint, points));
+        }
+        pointsAtRisk.Sort((x,y) => {return x.Item2.CompareTo(y.Item2) *-1;});
+
+        return pointsAtRisk;
+    }
+
     private void CloseBorders(Dictionary<Field, int> controlledUnits)
     {
+        bool canSpawn = gameBoard.MyMatter >= Consts.BuildCost;
         if (!rowMappedFields.ContainsKey(0))
         {
             for (int i = 0; i < GameBoard.height; i++)
@@ -156,10 +210,18 @@ class MidGame : GamePhase
             {
                 if (myRowMappedUnits.ContainsKey(i))
                 {
-                    Field closestUnit = myRowMappedUnits[i][0];
+                    Field closestUnit = UTIL.GetFurthestField(myRowMappedUnits[i]);
                     Console.Error.WriteLine("Close Bot Border With " + closestUnit.PositionLog());
                     controlledUnits.Add(closestUnit, 1);
                     command += ActionsBuilder.Move(closestUnit, closestUnit.X, GameBoard.height - 1, 1);
+                    break;
+                }
+                if (rowMappedFields.ContainsKey(i + 1))
+                {
+                    Field closestSpawn = UTIL.GetFurthestField(rowMappedFields[i + 1]);
+                    Console.Error.WriteLine("Close Bot Border With new Spawn" + closestSpawn.PositionLog());
+                    command += ActionsBuilder.Spawn(closestSpawn, 1);
+                    gameBoard.MyMatter -= Consts.BuildCost;
                     break;
                 }
             }
@@ -191,6 +253,7 @@ class MidGame : GamePhase
         if (unitsLeft <= 0)
             return;
         //Attack Nearest Enemy Field
+
         foreach (Field checkField in unit.GetPossibleMoveDirection(gameBoard))
         {
             disscoverdFields.Add(checkField);
@@ -199,19 +262,19 @@ class MidGame : GamePhase
             {
                 unitsLeft -= unit.Pressure;
                 command += ActionsBuilder.Move(unit, checkField, unit.Pressure);
-                
+
                 return;
             }
         }
 
         foreach (Field f in disscoverdFields)
-            currentFields.Add(f); 
+            currentFields.Add(f);
 
         //Search for next Enemy field
         while (currentFields.Count > 0)
         {
             if (unitsLeft <= 0)
-                    return;
+                return;
             foreach (Field f in currentFields)
             {
                 visistedFields.Add(f);
@@ -229,7 +292,7 @@ class MidGame : GamePhase
                        !disscoverdFields.Contains(checkField))
                         disscoverdFields.Add(checkField);
                 }
-                
+
             }
             currentFields.Clear();
 

@@ -7,6 +7,12 @@ using System.Numerics;
 using System.Text;
 //8236584684887423000 wide big nopoint
 //4922755871518232000 big point flank
+
+//IMPROVEMENTS: 
+//1. When calc Way towards AttackPoint mark fields as steped
+//1.1 Compare ways with the same length how many newStep fields its creates 
+
+//Calculate how much points a move of a enemy will cost me and prio spawn
 class Player
 {
     public static sbyte PlayDirection = 1; // 1 to right , -1 to left

@@ -95,7 +95,24 @@ struct Field
         return possibleDirection;
     }
 
-    
+    public bool GetFieldInDirection(bool AttackDirection, GameBoard gameboard, out Field directionField )
+    {
+        int direction = AttackDirection ? Player.PlayDirection : Player.PlayDirection * -1;
+        int x = X + direction;
+        bool inbound = UTIL.CheckForInBound(x, Y);
+        directionField = gameboard[0,0];
+        if(!inbound)
+        {
+            return false;
+        }
+        else
+        {
+            directionField = gameboard[x,Y];
+            return true;
+        }
+    }
+
+
 
     static public bool operator ==(Field self, Field other)
     {

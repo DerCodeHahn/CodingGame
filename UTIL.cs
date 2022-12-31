@@ -14,4 +14,12 @@ static class UTIL
     {
         return x >= 0 && y >= 0 && x < GameBoard.width && y < GameBoard.height;
     }
+
+    public static Field GetFurthestField(List<Field> fields)
+    {
+        if(Player.PlayDirection == 1)
+            return fields[fields.Count - 1]; 
+        else
+            return fields[0];
+    }
 }
