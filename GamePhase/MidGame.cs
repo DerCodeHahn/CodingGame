@@ -33,7 +33,7 @@ class MidGame : GamePhase
                         controlledUnits.Add(moveField, 0);
                     controlledUnits[moveField] = field.units;
                     command += ActionsBuilder.Move(field, moveField, field.units);
-                    Console.Error.WriteLine("Flank");
+                    Console.Error.WriteLine($"Flank with {field.PositionLog()} to {moveField.PositionLog()}");
                     continue;
                 }
             }
@@ -50,10 +50,10 @@ class MidGame : GamePhase
             if (buildField.GoodSpawn || buildField.OffenceSpawn)
             {
                 if (buildField.Pressure < 0)
-                    if (buildField.canBuild)
+                    //if (buildField.canBuild)
                         defenceBuildSpawn.Add(buildField);
-                    else
-                        offenceSpawn.Add(buildField);
+                    // else
+                    //     offenceSpawn.Add(buildField);
                 else if (buildField.Pressure == 0)
                 {
                     if (buildField.OffenceSpawn)
@@ -63,30 +63,43 @@ class MidGame : GamePhase
                 }
                 else
                 {
-                    offenceSpawn.Add(buildField);
+                    //offenceSpawn.Add(buildField);
                 }
 
             }
 
         }
         //defenceBuildSpawn.Sort(Field.SortByPressure);
-        List<(Field,int)> DefenceValues = AnalysePointsOnRisk(defenceBuildSpawn);
-        foreach ((Field field,int pointLossScore) defence in DefenceValues)
+        List<(Field, int)> DefenceValues = AnalysePointsOnRisk(defenceBuildSpawn);
+        foreach ((Field field, int pointLossScore) defence in DefenceValues)
         {
             Console.Error.WriteLine($"Position {defence.field.PositionLog()} with Score: {defence.pointLossScore}");
         }
-        foreach ((Field field,int pointLossScore) defence in DefenceValues)
+        foreach ((Field field, int pointLossScore) defence in DefenceValues)
         {
             if (gameBoard.MyMatter < Consts.BuildCost)
                 break;
-            command += ActionsBuilder.Build(defence.field);
-            gameBoard.MyMatter -= Consts.BuildCost;
+            if(defence.field.canBuild)
+            {
+                command += ActionsBuilder.Build(defence.field);
+                Field f = gameBoard[defence.field.X, defence.field.Y];
+                f.recycler = true;
+                gameBoard[defence.field.X, defence.field.Y] = f;
+                gameBoard.MyMatter -= Consts.BuildCost;
+            }
+            else if(defence.field.canSpawn)
+            {
+                command += ActionsBuilder.Spawn(defence.field, defence.field.Pressure * -1);
+                gameBoard.MyMatter -= Consts.BuildCost;
+            }
         }
 
         offenceSpawn.Sort(Field.SortByGameDirection);
+        //List<(Field, int)> DefenceUnitSpawnValues = AnalysePointsOnRisk(offenceSpawn,true);
+        
         foreach (Field offence in offenceSpawn)
         {
-            Console.Error.WriteLine("OffenceSpawn" + offence.PositionLog());
+            Console.Error.WriteLine($"OffenceSpawn {offence.PositionLog()}");
         }
 
         if (gameBoard.MyMatter >= Consts.BuildCost && offenceSpawn.Count != 0)
@@ -142,6 +155,7 @@ class MidGame : GamePhase
         HashSet<Field> fieldCounted = new();
         foreach (Field defendPoint in fields)
         {
+            
             fieldCounted.Clear();
             fieldCounted.Add(defendPoint);
             int points = 1; //the field it self
@@ -153,34 +167,37 @@ class MidGame : GamePhase
 
             foreach (Field buildAroundField in defendPoint.GetPossibleMoveDirection(gameBoard))
             {
-                if (buildAroundField.canBuild && buildAroundField.mine)
+                if (buildAroundField.mine)
                 {
                     points++; // field where i build gets destroyed
                     //check how much gets Destroyed by blocking
-                    foreach (Field checkMyField in buildAroundField.GetPossibleMoveDirection(gameBoard))
-                    {
-                        bool notDefendPoint = checkMyField != defendPoint;
-                        bool alreadyCounted = fieldCounted.Contains(checkMyField);
-                        if (checkMyField.mine && notDefendPoint && !alreadyCounted && buildAroundField.scrapAmount >= checkMyField.scrapAmount)
+                    if (buildAroundField.canBuild || buildAroundField.canSpawn)
+                        foreach (Field checkMyField in buildAroundField.GetPossibleMoveDirection(gameBoard))
                         {
-                            fieldCounted.Add(checkMyField);
-                            points++; // field gets destroyed 
+                            bool notDefendPoint = checkMyField != defendPoint;
+                            bool alreadyCounted = fieldCounted.Contains(checkMyField);
+                            //TODO Check if Field is in my half or enemy half, or even a enemy field
+                            //TODO Check my unit count may be i dont have to build
+                            if (checkMyField.mine && notDefendPoint && !alreadyCounted && buildAroundField.scrapAmount >= checkMyField.scrapAmount)
+                            {
+                                fieldCounted.Add(checkMyField);
+                                points++; // field gets destroyed 
+                            }
                         }
-                    }
                 }
                 else
                 {
                     if (horizontalAttack && buildAroundField == fieldInDefendDirection && freeAreaBehindAttack)
                         points += Player.PlayDirection == 1 ? GameBoard.width - buildAroundField.X : buildAroundField.X;
                 }
-                
+
             }
             if (horizontalAttack)
-                    points *= 2;
+                points *= 2;
             Console.Error.WriteLine($"DefendPoint {defendPoint.PositionLog()} would loose {points}");
             pointsAtRisk.Add((defendPoint, points));
         }
-        pointsAtRisk.Sort((x,y) => {return x.Item2.CompareTo(y.Item2) *-1;});
+        pointsAtRisk.Sort((x, y) => { return x.Item2.CompareTo(y.Item2) * -1; });
 
         return pointsAtRisk;
     }
