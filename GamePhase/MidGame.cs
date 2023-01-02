@@ -63,7 +63,7 @@ class MidGame : GamePhase
                 }
                 else
                 {
-                    //offenceSpawn.Add(buildField);
+                    offenceSpawn.Add(buildField);
                 }
 
             }
@@ -213,9 +213,21 @@ class MidGame : GamePhase
                 {
                     Field closestUnit = myRowMappedUnits[i][0];
                     Console.Error.WriteLine("Close Top Border With " + closestUnit.PositionLog());
-
+                    Field borderField = gameBoard.fields[closestUnit.X, 0];
+                    while(borderField.scrapAmount == 0)
+                    {
+                        borderField = gameBoard.fields[closestUnit.X, borderField.Y + 1];
+                    }
                     controlledUnits.Add(closestUnit, 1);
-                    command += ActionsBuilder.Move(closestUnit, closestUnit.X, 0, 1);
+                    command += ActionsBuilder.Move(closestUnit, borderField, 1);
+                    break;
+                }
+                if (rowMappedFields.ContainsKey(i - 1))
+                {
+                    Field closestSpawn = UTIL.GetFurthestField(rowMappedFields[i - 1]);
+                    Console.Error.WriteLine("Close Top Border With new Spawn" + closestSpawn.PositionLog());
+                    command += ActionsBuilder.Spawn(closestSpawn, 1);
+                    gameBoard.MyMatter -= Consts.BuildCost;
                     break;
                 }
             }
@@ -230,7 +242,12 @@ class MidGame : GamePhase
                     Field closestUnit = UTIL.GetFurthestField(myRowMappedUnits[i]);
                     Console.Error.WriteLine("Close Bot Border With " + closestUnit.PositionLog());
                     controlledUnits.Add(closestUnit, 1);
-                    command += ActionsBuilder.Move(closestUnit, closestUnit.X, GameBoard.height - 1, 1);
+                    Field borderField = gameBoard.fields[closestUnit.X, GameBoard.height - 1];
+                    while(borderField.scrapAmount == 0)
+                    {
+                        borderField = gameBoard.fields[closestUnit.X, borderField.Y - 1];
+                    }
+                    command += ActionsBuilder.Move(closestUnit,borderField , 1);
                     break;
                 }
                 if (rowMappedFields.ContainsKey(i + 1))
