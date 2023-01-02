@@ -7,7 +7,7 @@ class MidGame : GamePhase
 
         controlledUnits.Clear();
         CloseBorders(controlledUnits);
-
+        SaveUnits();
         BuildDefense();
         MoveIntoFreeFieldForward();
         //TODO: keep an eye on overall Mattle to not get overrun
@@ -18,6 +18,48 @@ class MidGame : GamePhase
             Console.WriteLine(ActionsBuilder.Wait());
         else
             Console.WriteLine(command);
+    }
+
+    private void SaveUnits()
+    {
+        foreach (Field unit in gameBoard.MyUnits)
+        {
+            if (unit.scrapAmount == 1 && unit.inRangeOfRecycler)
+                MoveAway(unit);
+        }
+    }
+
+    private void MoveAway(Field unit)
+    {
+        List<(Field, int)> PrioList = new(4);
+        foreach (Field f in unit.GetPossibleMoveDirection(gameBoard))
+        {
+            if (f.enemies && !f.recycler) // attack
+            {
+                PrioList.Add((f, 1));
+            }
+            else if (!f.enemies && !f.mine) // move to free
+            {
+                PrioList.Add((f, 2));
+            }
+            else //justsave
+            {
+                int prio = f.X == unit.X ? 3 : 4;
+                PrioList.Add((f, prio));
+            }
+        }
+        PrioList.Sort((x1, x2) => { return x1.Item2.CompareTo(x2.Item2); });
+
+        foreach ((Field, int) f in PrioList)
+        {
+            Console.Error.WriteLine($"Save {unit.PositionLog()} to {f.Item1.PositionLog()} with Prio {f.Item2} ");
+        }
+        if (PrioList.Count >= 1)
+        {
+            controlledUnits.Add(unit, unit.units);
+            command += ActionsBuilder.Move(unit, PrioList[0].Item1, unit.units);
+        }
+
     }
 
     void MoveIntoFreeFieldForward()
@@ -51,9 +93,9 @@ class MidGame : GamePhase
             {
                 if (buildField.Pressure < 0)
                     //if (buildField.canBuild)
-                        defenceBuildSpawn.Add(buildField);
-                    // else
-                    //     offenceSpawn.Add(buildField);
+                    defenceBuildSpawn.Add(buildField);
+                // else
+                //     offenceSpawn.Add(buildField);
                 else if (buildField.Pressure == 0)
                 {
                     if (buildField.OffenceSpawn)
@@ -79,7 +121,9 @@ class MidGame : GamePhase
         {
             if (gameBoard.MyMatter < Consts.BuildCost)
                 break;
-            if(defence.field.canBuild)
+            if (defence.field.inRangeOfRecycler && defence.field.scrapAmount == 1)
+                continue;
+            if (defence.field.canBuild)
             {
                 command += ActionsBuilder.Build(defence.field);
                 Field f = gameBoard[defence.field.X, defence.field.Y];
@@ -87,7 +131,7 @@ class MidGame : GamePhase
                 gameBoard[defence.field.X, defence.field.Y] = f;
                 gameBoard.MyMatter -= Consts.BuildCost;
             }
-            else if(defence.field.canSpawn)
+            else if (defence.field.canSpawn)
             {
                 command += ActionsBuilder.Spawn(defence.field, defence.field.Pressure * -1);
                 gameBoard.MyMatter -= Consts.BuildCost;
@@ -96,7 +140,7 @@ class MidGame : GamePhase
 
         offenceSpawn.Sort(Field.SortByGameDirection);
         //List<(Field, int)> DefenceUnitSpawnValues = AnalysePointsOnRisk(offenceSpawn,true);
-        
+
         foreach (Field offence in offenceSpawn)
         {
             Console.Error.WriteLine($"OffenceSpawn {offence.PositionLog()}");
@@ -110,9 +154,11 @@ class MidGame : GamePhase
             {
                 if (gameBoard.MyMatter < Consts.BuildCost)
                     break;
+                if (offence.inRangeOfRecycler && offence.scrapAmount == 1)
+                    continue;
                 Console.Error.WriteLine("OffenceSpawn At" + offence.PositionLog());
                 command += ActionsBuilder.Spawn(offence, spawnableUnits);
-                gameBoard.MyMatter -= Consts.BuildCost;
+                gameBoard.MyMatter -= Consts.BuildCost * spawnableUnits;
             }
         }
 
@@ -121,6 +167,8 @@ class MidGame : GamePhase
         {
             if (gameBoard.MyMatter < Consts.BuildCost)
                 break;
+            if (field.inRangeOfRecycler && field.scrapAmount == 1)
+                continue;
             Console.Error.WriteLine("Free Spawn At" + field.PositionLog());
 
             command += ActionsBuilder.Spawn(field, 1);
@@ -155,7 +203,7 @@ class MidGame : GamePhase
         HashSet<Field> fieldCounted = new();
         foreach (Field defendPoint in fields)
         {
-            
+
             fieldCounted.Clear();
             fieldCounted.Add(defendPoint);
             int points = 1; //the field it self
@@ -214,7 +262,7 @@ class MidGame : GamePhase
                     Field closestUnit = myRowMappedUnits[i][0];
                     Console.Error.WriteLine("Close Top Border With " + closestUnit.PositionLog());
                     Field borderField = gameBoard.fields[closestUnit.X, 0];
-                    while(borderField.scrapAmount == 0)
+                    while (borderField.scrapAmount == 0)
                     {
                         borderField = gameBoard.fields[closestUnit.X, borderField.Y + 1];
                     }
@@ -243,11 +291,11 @@ class MidGame : GamePhase
                     Console.Error.WriteLine("Close Bot Border With " + closestUnit.PositionLog());
                     controlledUnits.Add(closestUnit, 1);
                     Field borderField = gameBoard.fields[closestUnit.X, GameBoard.height - 1];
-                    while(borderField.scrapAmount == 0)
+                    while (borderField.scrapAmount == 0)
                     {
                         borderField = gameBoard.fields[closestUnit.X, borderField.Y - 1];
                     }
-                    command += ActionsBuilder.Move(closestUnit,borderField , 1);
+                    command += ActionsBuilder.Move(closestUnit, borderField, 1);
                     break;
                 }
                 if (rowMappedFields.ContainsKey(i + 1))
@@ -264,7 +312,10 @@ class MidGame : GamePhase
 
     void Defence(Field unit)
     {
+        if (unit.inRangeOfRecycler && unit.scrapAmount == 1)
+            return;
         int mustSpawn = unit.Pressure * -1;
+
         if (Consts.BuildCost * mustSpawn <= gameBoard.MyMatter)
         {
             gameBoard.MyMatter -= Consts.BuildCost * mustSpawn;
