@@ -1,13 +1,18 @@
 class MidGame : GamePhase
 {
     Dictionary<Field, int> controlledUnits = new Dictionary<Field, int>();
+    int nothingChangedCounter = 0;
+    int oldPoints = 0;
+    Field conquereUnit;
+    bool Conquering = false;
     public override void Execute(GameBoard gameBoard)
     {
         base.Execute(gameBoard);
 
         controlledUnits.Clear();
-        CloseBorders(controlledUnits);
+        ConquereMapOnStuck();
         SaveUnits();
+        CloseBorders(controlledUnits);
         BuildDefense();
         MoveIntoFreeFieldForward();
         //TODO: keep an eye on overall Mattle to not get overrun
@@ -260,15 +265,18 @@ class MidGame : GamePhase
                 if (myRowMappedUnits.ContainsKey(i))
                 {
                     Field closestUnit = myRowMappedUnits[i][0];
-                    Console.Error.WriteLine("Close Top Border With " + closestUnit.PositionLog());
-                    Field borderField = gameBoard.fields[closestUnit.X, 0];
-                    while (borderField.scrapAmount == 0)
+                    if (!controlledUnits.ContainsKey(closestUnit))
                     {
-                        borderField = gameBoard.fields[closestUnit.X, borderField.Y + 1];
+                        Console.Error.WriteLine("Close Top Border With " + closestUnit.PositionLog());
+                        Field borderField = gameBoard.fields[closestUnit.X, 0];
+                        while (borderField.scrapAmount == 0)
+                        {
+                            borderField = gameBoard.fields[closestUnit.X, borderField.Y + 1];
+                        }
+                        controlledUnits.Add(closestUnit, 1);
+                        command += ActionsBuilder.Move(closestUnit, borderField, 1);
+                        break;
                     }
-                    controlledUnits.Add(closestUnit, 1);
-                    command += ActionsBuilder.Move(closestUnit, borderField, 1);
-                    break;
                 }
                 if (rowMappedFields.ContainsKey(i - 1))
                 {
@@ -287,16 +295,20 @@ class MidGame : GamePhase
             {
                 if (myRowMappedUnits.ContainsKey(i))
                 {
+
                     Field closestUnit = UTIL.GetFurthestField(myRowMappedUnits[i]);
-                    Console.Error.WriteLine("Close Bot Border With " + closestUnit.PositionLog());
-                    controlledUnits.Add(closestUnit, 1);
-                    Field borderField = gameBoard.fields[closestUnit.X, GameBoard.height - 1];
-                    while (borderField.scrapAmount == 0)
+                    if (!controlledUnits.ContainsKey(closestUnit))
                     {
-                        borderField = gameBoard.fields[closestUnit.X, borderField.Y - 1];
+                        Console.Error.WriteLine("Close Bot Border With " + closestUnit.PositionLog());
+                        controlledUnits.Add(closestUnit, 1);
+                        Field borderField = gameBoard.fields[closestUnit.X, GameBoard.height - 1];
+                        while (borderField.scrapAmount == 0)
+                        {
+                            borderField = gameBoard.fields[closestUnit.X, borderField.Y - 1];
+                        }
+                        command += ActionsBuilder.Move(closestUnit, borderField, 1);
+                        break;
                     }
-                    command += ActionsBuilder.Move(closestUnit, borderField, 1);
-                    break;
                 }
                 if (rowMappedFields.ContainsKey(i + 1))
                 {
@@ -393,5 +405,83 @@ class MidGame : GamePhase
                 return;
             }
         }
+    }
+
+    void ConquereMapOnStuck()
+    {
+        Console.Error.WriteLine($"ChangeCounter {nothingChangedCounter}");
+        if (Conquering)
+        {
+            HashSet<Field> disscoverdSet = new();
+            HashSet<Field> currentSet = new();
+            HashSet<Field> checkedSet = new();
+            Dictionary<Field, Field> discoverList = new();
+            currentSet.Add(conquereUnit);
+            while (currentSet.Count != 0)
+            {
+                foreach (Field checkField in currentSet)
+                {
+                    checkedSet.Add(checkField);
+                    foreach (Field next in checkField.GetPossibleMoveDirection(gameBoard))
+                    {
+                        if (next == conquereUnit)
+                            continue;
+                        Console.Error.Write(next.PositionLog() + ", ");
+                        if (!discoverList.ContainsKey(next))
+                            discoverList.Add(next, checkField);
+                        if (!next.mine && !next.enemies)
+                        {
+                            Field backtrackingField = next;
+                            while (discoverList.ContainsKey(backtrackingField))
+                            {
+                                if (conquereUnit == discoverList[backtrackingField])
+                                    break;
+                                backtrackingField = discoverList[backtrackingField];
+                            }
+                            Console.Error.WriteLine($"conquereUnit {conquereUnit.PositionLog()} to {next.PositionLog()} over {backtrackingField.PositionLog()}");
+                            command += ActionsBuilder.Move(conquereUnit, backtrackingField, 1);
+                            conquereUnit = backtrackingField;
+                            return;
+                        }
+                        if (!next.enemies && !checkedSet.Contains(next) && !disscoverdSet.Contains(next))
+                        {
+                            disscoverdSet.Add(next);
+                        }
+                    }
+                }
+                currentSet.Clear();
+
+                foreach (Field f in disscoverdSet)
+                    currentSet.Add(f);
+                disscoverdSet.Clear();
+            }
+            Conquering = false;
+            nothingChangedCounter = 0;
+        }
+
+        if (oldPoints == gameBoard.MyFields.Count)
+            nothingChangedCounter++;
+        else
+        {
+            nothingChangedCounter = 0;
+        }
+
+        if (nothingChangedCounter >= Settings.StartConquereAfterSteps)
+        {
+            List<Field> spawnAtFree = new();
+            foreach (Field buildField in gameBoard.MyFields)
+            {
+                if (buildField.GoodSpawn)
+                {
+                    command += ActionsBuilder.Spawn(buildField, 1);
+                    conquereUnit = buildField;
+                    Conquering = true;
+                    gameBoard.MyMatter -= Consts.BuildCost;
+                    Console.Error.WriteLine("spawning C-Unit " + buildField.PositionLog());
+                    break;
+                }
+            }
+        }
+        oldPoints = gameBoard.MyFields.Count;
     }
 }

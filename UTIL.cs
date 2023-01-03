@@ -21,7 +21,7 @@ static class UTIL
         int startIndex = toTheRight ? fields.Count - 1 : 0;
         int target = toTheRight ? 0 : fields.Count - 1;
 
-        for(int i = startIndex; toTheRight && i >= 0 || !toTheRight && i <= fields.Count - 1; i+=Player.PlayDirection)
+        for(int i = startIndex; toTheRight && i >= 0 || !toTheRight && i <= fields.Count - 1; i+=Player.PlayDirection * -1)
         {
             if (fields[i].inRangeOfRecycler && fields[i].scrapAmount == 1)
                 continue;
