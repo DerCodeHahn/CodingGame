@@ -362,18 +362,21 @@ class MidGame : GamePhase
         if (unitsLeft <= 0)
             return;
         //Attack Nearest Enemy Field
-
+        List<Field> possibleFields = new ();
         foreach (Field checkField in unit.GetPossibleMoveDirection(gameBoard))
         {
             disscoverdFields.Add(checkField);
             visistedFields.Add(checkField);
+            
             if (checkField.enemies && unit.Pressure > 0)
             {
-                unitsLeft -= unit.Pressure;
-                command += ActionsBuilder.Move(unit, checkField, unit.Pressure);
-
-                return;
+                possibleFields.Add(checkField);
             }
+        }
+        if(possibleFields.Count >= 1)
+        {
+            SplittAttack(possibleFields, unit);
+            return;
         }
 
         foreach (Field f in disscoverdFields)
@@ -417,6 +420,21 @@ class MidGame : GamePhase
                 return;
             }
         }
+    }
+
+    void SplittAttack(List<Field> possibleAttackFields, Field targetUnit)
+    {
+        int unitsPerField = targetUnit.Pressure / possibleAttackFields.Count;
+        int rest = targetUnit.Pressure % possibleAttackFields.Count;
+        Console.Error.WriteLine($"SplittAttack {unitsPerField}");
+
+        foreach(Field f in possibleAttackFields)
+        {
+            command += ActionsBuilder.Move(targetUnit, f, unitsPerField + rest);
+            rest = 0;
+        }
+        
+        
     }
 
     void ConquereMapOnStuck()

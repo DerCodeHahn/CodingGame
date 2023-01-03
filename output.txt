@@ -1,11 +1,11 @@
 using System.Collections.Generic;
-using System.Text;
 using System.Collections;
-using System.IO;
-using System.Diagnostics.CodeAnalysis;
-using System;
-using System.Linq;
 using System.Numerics;
+using System.IO;
+using System.Text;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System;
 /*
 UTIL.cs
 */
@@ -1263,18 +1263,21 @@ class MidGame : GamePhase
         if (unitsLeft <= 0)
             return;
         //Attack Nearest Enemy Field
-
+        List<Field> possibleFields = new ();
         foreach (Field checkField in unit.GetPossibleMoveDirection(gameBoard))
         {
             disscoverdFields.Add(checkField);
             visistedFields.Add(checkField);
+
             if (checkField.enemies && unit.Pressure > 0)
             {
-                unitsLeft -= unit.Pressure;
-                command += ActionsBuilder.Move(unit, checkField, unit.Pressure);
-
-                return;
+                possibleFields.Add(checkField);
             }
+        }
+        if(possibleFields.Count >= 1)
+        {
+            SplittAttack(possibleFields, unit);
+            return;
         }
 
         foreach (Field f in disscoverdFields)
@@ -1318,6 +1321,21 @@ class MidGame : GamePhase
                 return;
             }
         }
+    }
+
+    void SplittAttack(List<Field> possibleAttackFields, Field targetUnit)
+    {
+        int unitsPerField = targetUnit.Pressure / possibleAttackFields.Count;
+        int rest = targetUnit.Pressure % possibleAttackFields.Count;
+        Console.Error.WriteLine($"SplittAttack {unitsPerField}");
+
+        foreach(Field f in possibleAttackFields)
+        {
+            command += ActionsBuilder.Move(targetUnit, f, unitsPerField + rest);
+            rest = 0;
+        }
+
+
     }
 
     void ConquereMapOnStuck()
@@ -1609,8 +1627,18 @@ class EarlyGame : GamePhase
         {
             if (field.Value >= 1)
             {
-                //TODO : Search for next Enmy or Free Field
-                command += ActionsBuilder.Move(field.Key, field.Key.X, field.Key.Y, field.Value);
+                Console.Error.WriteLine("Sending" + field.Key.PositionLog() + "to the front");
+                foreach(Field f in Player.AttackLine)
+                {
+                    Console.Error.WriteLine("AttackLine" + f.PositionLog());
+                    if(f.Y == field.Key.Y)
+                        command += ActionsBuilder.Move(field.Key, f, field.Value);
+
+                }
+                if(enemyRowMappedUnits.ContainsKey(field.Key.Y))
+                {
+                    command += ActionsBuilder.Move(field.Key,enemyRowMappedUnits[field.Key.Y][0], field.Value);
+                }
             }
         }
     }
@@ -1660,6 +1688,19 @@ class EarlyGame : GamePhase
         }
         Console.Error.WriteLine("Not Found");
         return false;
+    }
+
+    void DynamicAttackLine()
+    {
+        HashSet<Field> myVisitedFields = new();
+        HashSet<Field> myCurrentFields = new(gameBoard.MyFields);
+        HashSet<Field> myInspectList = new();
+
+        HashSet<Field> enemyVisitedFields = new();
+        HashSet<Field> enemyCurrentFields = new(gameBoard.EnemieFields);
+        HashSet<Field> enemyInspectList = new();
+
+        //TODO: Implement Step like progress for the whole map
     }
 
     void Move()
