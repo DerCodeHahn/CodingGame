@@ -93,7 +93,7 @@ class EarlyGame : GamePhase
                 enemyCurrentFields.Add(f);
             enemyInspectList.Clear();
         }
-        step = 0;
+        step = 1;
         while (myCurrentFields.Count > 0)
         {
             foreach (Field f in myCurrentFields)

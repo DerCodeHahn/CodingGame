@@ -1,11 +1,11 @@
-using System.Linq;
+using System.Text;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System;
-using System.Collections;
+using System.Linq;
 using System.IO;
 using System.Numerics;
-using System.Text;
+using System;
+using System.Collections;
 /*
 UTIL.cs
 */
@@ -1487,7 +1487,7 @@ class EarlyGame : GamePhase
                 enemyCurrentFields.Add(f);
             enemyInspectList.Clear();
         }
-        step = 0;
+        step = 1;
         while (myCurrentFields.Count > 0)
         {
             foreach (Field f in myCurrentFields)
