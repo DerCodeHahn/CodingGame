@@ -5,6 +5,9 @@ class MidGame : GamePhase
     int oldPoints = 0;
     Field conquereUnit;
     bool Conquering = false;
+    private bool topClosed = false;
+    private bool bottomClosed = false;
+
     public override void Execute(GameBoard gameBoard)
     {
         base.Execute(gameBoard);
@@ -16,7 +19,6 @@ class MidGame : GamePhase
         BuildDefense();
         MoveIntoFreeFieldForward();
         //TODO: keep an eye on overall Mattle to not get overrun
-        //TODO: improve flanking right now its not useable because of backwalk
 
         DecideAction();
         if (command == "")
@@ -258,7 +260,7 @@ class MidGame : GamePhase
     private void CloseBorders(Dictionary<Field, int> controlledUnits)
     {
         bool canSpawn = gameBoard.MyMatter >= Consts.BuildCost;
-        if (!rowMappedFields.ContainsKey(0))
+        if (!rowMappedFields.ContainsKey(0) && !topClosed)
         {
             for (int i = 0; i < GameBoard.height; i++)
             {
@@ -273,8 +275,13 @@ class MidGame : GamePhase
                         {
                             borderField = gameBoard.fields[closestUnit.X, borderField.Y + 1];
                         }
-                        controlledUnits.Add(closestUnit, 1);
-                        command += ActionsBuilder.Move(closestUnit, borderField, 1);
+                        if (closestUnit == borderField)
+                            topClosed = true;
+                        else
+                        {
+                            controlledUnits.Add(closestUnit, 1);
+                            command += ActionsBuilder.Move(closestUnit, borderField, 1);
+                        }
                         break;
                     }
                 }
@@ -289,7 +296,7 @@ class MidGame : GamePhase
             }
         }
 
-        if (!rowMappedFields.ContainsKey(GameBoard.height - 1))
+        if (!rowMappedFields.ContainsKey(GameBoard.height - 1) && !bottomClosed)
         {
             for (int i = GameBoard.height - 1; i >= 0; i--)
             {
@@ -306,7 +313,12 @@ class MidGame : GamePhase
                         {
                             borderField = gameBoard.fields[closestUnit.X, borderField.Y - 1];
                         }
-                        command += ActionsBuilder.Move(closestUnit, borderField, 1);
+                        if (closestUnit == borderField)
+                            bottomClosed = true;
+                        else
+                        {
+                            command += ActionsBuilder.Move(closestUnit, borderField, 1);
+                        }
                         break;
                     }
                 }
