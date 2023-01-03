@@ -203,8 +203,18 @@ class EarlyGame : GamePhase
         {
             if (field.Value >= 1)
             {
-                //TODO : Search for next Enmy or Free Field
-                command += ActionsBuilder.Move(field.Key, field.Key.X, field.Key.Y, field.Value);
+                Console.Error.WriteLine("Sending" + field.Key.PositionLog() + "to the front");
+                foreach(Field f in Player.AttackLine)
+                {
+                    Console.Error.WriteLine("AttackLine" + f.PositionLog());
+                    if(f.Y == field.Key.Y)
+                        command += ActionsBuilder.Move(field.Key, f, field.Value);
+                    
+                }
+                if(enemyRowMappedUnits.ContainsKey(field.Key.Y))
+                {
+                    command += ActionsBuilder.Move(field.Key,enemyRowMappedUnits[field.Key.Y][0], field.Value);
+                }
             }
         }
     }
@@ -254,6 +264,19 @@ class EarlyGame : GamePhase
         }
         Console.Error.WriteLine("Not Found");
         return false;
+    }
+
+    void DynamicAttackLine()
+    {
+        HashSet<Field> myVisitedFields = new();
+        HashSet<Field> myCurrentFields = new(gameBoard.MyFields);
+        HashSet<Field> myInspectList = new();
+
+        HashSet<Field> enemyVisitedFields = new();
+        HashSet<Field> enemyCurrentFields = new(gameBoard.EnemieFields);
+        HashSet<Field> enemyInspectList = new();
+        
+        //TODO: Implement Step like progress for the whole map
     }
 
     void Move()
