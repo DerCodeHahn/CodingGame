@@ -166,20 +166,21 @@ class MidGame : GamePhase
             else if (defence.field.canSpawn)
             {
                 int spawnUnits = Math.Max (defence.field.Pressure * -1, 1);
+                Console.Error.WriteLine ($"Deffence Spawn {defence.field.PositionLog()}");
                 command += ActionsBuilder.Spawn (defence.field, spawnUnits);
                 DecreasePressure (defence.field);
 
-                gameBoard.MyMatter -= Consts.BuildCost;
+                gameBoard.MyMatter -= Consts.BuildCost * spawnUnits;
             }
         }
 
         offenceSpawn.Sort (Field.SortByGameDirection);
         //List<(Field, int)> DefenceUnitSpawnValues = AnalysePointsOnRisk(offenceSpawn,true);
 
-        foreach (Field offence in offenceSpawn)
-        {
-            Console.Error.WriteLine ($"OffenceSpawn {offence.PositionLog()}");
-        }
+        // foreach (Field offence in offenceSpawn)
+        // {
+        //     Console.Error.WriteLine ($"OffenceSpawn {offence.PositionLog()}");
+        // }
 
         if (gameBoard.MyMatter >= Consts.BuildCost && offenceSpawn.Count != 0)
         {
@@ -191,7 +192,7 @@ class MidGame : GamePhase
                     break;
                 if (offence.inRangeOfRecycler && offence.scrapAmount == 1)
                     continue;
-                Console.Error.WriteLine ("OffenceSpawn At" + offence.PositionLog ());
+                Console.Error.WriteLine ("OffenceSpawn At" + offence.PositionLog () + " with " + spawnableUnits);
                 command += ActionsBuilder.Spawn (offence, spawnableUnits);
                 DecreasePressure (offence);
                 gameBoard.MyMatter -= Consts.BuildCost * spawnableUnits;
@@ -215,7 +216,6 @@ class MidGame : GamePhase
     void IncreasePressure (Field field, byte units)
     {
         int index = gameBoard.MyUnits.FindIndex (0, gameBoard.MyUnits.Count, (x) => { return x == field; });
-        Console.Error.WriteLine ($"Searched for {field.PositionLog()} found at {index}");
         if (index == -1) //no units to influence
             return;
         gameBoard.MyFields.Remove (field);
@@ -223,7 +223,6 @@ class MidGame : GamePhase
 
         gameBoard.MyFields.Add (field);
         gameBoard.MyUnits[index] = field;
-        Console.Error.WriteLine ($"Set for {gameBoard.MyUnits[index].PositionLog()} foreCast {gameBoard.MyUnits[index].PressureChangeForecast}");
     }
     private void DecreasePressure (Field defence)
     {
@@ -301,7 +300,6 @@ class MidGame : GamePhase
             }
             if (horizontalAttack)
                 points *= 2;
-            Console.Error.WriteLine ($"DefendPoint {defendPoint.PositionLog()} would loose {points}");
             pointsAtRisk.Add ((defendPoint, points));
         }
         pointsAtRisk.Sort ((x, y) => { return x.Item2.CompareTo (y.Item2) * -1; });
@@ -390,8 +388,8 @@ class MidGame : GamePhase
     {
         if (unit.inRangeOfRecycler && unit.scrapAmount == 1)
             return;
-        int mustSpawn = unit.Pressure * -1;
-
+        int mustSpawn = (unit.Pressure + unit.PressureChangeForecast) * -1;
+        Console.Error.WriteLine($"Defence on {unit.PositionLog()} {unit.Pressure} + {unit.PressureChangeForecast}");
         if (Consts.BuildCost * mustSpawn <= gameBoard.MyMatter)
         {
             gameBoard.MyMatter -= Consts.BuildCost * mustSpawn;
