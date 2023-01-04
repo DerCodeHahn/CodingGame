@@ -1,11 +1,11 @@
-using System.Collections.Generic;
-using System.Text;
-using System.IO;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Numerics;
 using System.Collections;
+using System.IO;
+using System.Text;
+using System.Diagnostics.CodeAnalysis;
+using System.Collections.Generic;
 using System;
+using System.Linq;
 /*
 ActionsBuilder.cs
 */
@@ -1088,9 +1088,9 @@ class EarlyGame : GamePhase
     {
 
         //Console.Error.WriteLine("Update AttackLine");
-        //EasyUpdateAttackLine();
+        EasyUpdateAttackLine();
 
-        DynamicAttackLine();
+        //DynamicAttackLine();
 
 
         // toDO send all other to the next field / front

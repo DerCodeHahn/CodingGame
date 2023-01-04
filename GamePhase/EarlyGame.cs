@@ -168,9 +168,9 @@ class EarlyGame : GamePhase
     {
 
         //Console.Error.WriteLine("Update AttackLine");
-        //EasyUpdateAttackLine();
-        
-        DynamicAttackLine();
+        EasyUpdateAttackLine();
+
+        //DynamicAttackLine();
 
 
         // toDO send all other to the next field / front
