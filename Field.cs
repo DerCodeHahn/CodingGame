@@ -75,10 +75,13 @@ struct Field
         return $"{PositionLog()} scrap {scrapAmount} mine {mine} enemies {enemies} units {units} recycler {recycler} canBuild {canBuild}";
     }
 
-    public List<Field> GetPossibleMoveDirection(GameBoard board)
+    public List<Field> GetPossibleMoveDirection(GameBoard board, bool invertDirection = false)
     {
         List<Field> possibleDirection = new();
-        Direction[] MoveDirections = Player.PlayDirection == -1 ? MoveDirectionsLeftToRight : MoveDirectionsRightToLeft;
+        int Direction = Player.PlayDirection;
+        if(invertDirection)
+            Direction *= -1;
+        Direction[] MoveDirections = Direction == -1 ? MoveDirectionsLeftToRight : MoveDirectionsRightToLeft;
         foreach (Direction direction in MoveDirections)
         {
             byte x = (byte)(X + direction.X);

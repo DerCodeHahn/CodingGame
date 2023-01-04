@@ -79,11 +79,11 @@ class EarlyGame : GamePhase
             {
                 enemyVisitedFields.Add(f);
                 EnemyStepCounter.Add(f, step);
-                bool hasField = f.GetFieldInDirection(false, gameBoard,out Field moveField);
-                
+                bool hasField = f.GetFieldInDirection(false, gameBoard, out Field moveField);
+
                 if (!moveField.enemies && !enemyVisitedFields.Contains(moveField))
                     enemyInspectList.Add(moveField);
-                
+
 
             }
             step++;
@@ -168,7 +168,8 @@ class EarlyGame : GamePhase
     {
 
         //Console.Error.WriteLine("Update AttackLine");
-        EasyUpdateAttackLine();
+        //EasyUpdateAttackLine();
+        DynamicAttackLine();
         // toDO send all other to the next field / front
 
         // Find Point Symetry Attack Line
@@ -204,16 +205,16 @@ class EarlyGame : GamePhase
             if (field.Value >= 1)
             {
                 Console.Error.WriteLine("Sending" + field.Key.PositionLog() + "to the front");
-                foreach(Field f in Player.AttackLine)
+                foreach (Field f in Player.AttackLine)
                 {
                     Console.Error.WriteLine("AttackLine" + f.PositionLog());
-                    if(f.Y == field.Key.Y)
+                    if (f.Y == field.Key.Y)
                         command += ActionsBuilder.Move(field.Key, f, field.Value);
-                    
+
                 }
-                if(enemyRowMappedUnits.ContainsKey(field.Key.Y))
+                if (enemyRowMappedUnits.ContainsKey(field.Key.Y))
                 {
-                    command += ActionsBuilder.Move(field.Key,enemyRowMappedUnits[field.Key.Y][0], field.Value);
+                    command += ActionsBuilder.Move(field.Key, enemyRowMappedUnits[field.Key.Y][0], field.Value);
                 }
             }
         }
@@ -265,18 +266,59 @@ class EarlyGame : GamePhase
         Console.Error.WriteLine("Not Found");
         return false;
     }
-
+    Dictionary<Field, (Field source, int steps, int newFields)> MovementMap = new();
     void DynamicAttackLine()
     {
-        HashSet<Field> myVisitedFields = new();
-        HashSet<Field> myCurrentFields = new(gameBoard.MyFields);
-        HashSet<Field> myInspectList = new();
+        MovementMap.Clear();
+        HashSet<Field> VisitedFields = new();
+        HashSet<Field> CurrentFields = new(gameBoard.EnemyUnits.Concat(gameBoard.MyUnits));
+        HashSet<Field> InspectList = new();
+        Player.AttackLine.Clear();
+        int Step = 1;
+        while (CurrentFields.Count != 0)
+        {
+            foreach (Field currentField in CurrentFields)
+            {
+                foreach (Field checkField in currentField.GetPossibleMoveDirection(gameBoard, currentField.enemies))
+                {
+                    //Console.Error.Write($" {checkField.PositionLog()}, ");
+                    bool alreadyDiscoverd = MovementMap.ContainsKey(checkField);
+                    Field discoverdField = checkField;//copy field
+                    discoverdField.mine = currentField.mine;
+                    discoverdField.enemies = currentField.enemies;
 
-        HashSet<Field> enemyVisitedFields = new();
-        HashSet<Field> enemyCurrentFields = new(gameBoard.EnemieFields);
-        HashSet<Field> enemyInspectList = new();
-        
+                    if (alreadyDiscoverd)
+                    {
+                        Field AlreadyDiscoverdField = MovementMap.Keys.First<Field>((f) => { return f == discoverdField; });
+                        if (discoverdField == AlreadyDiscoverdField)
+                        {
+                            Console.Error.Write("-");
+                            if (discoverdField.mine && AlreadyDiscoverdField.enemies)
+                            {
+                                Console.Error.WriteLine("found collision" + discoverdField.PositionLog());
+                                Player.AttackLine.Add(discoverdField);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        InspectList.Add(discoverdField);
+                        MovementMap.Add(discoverdField, (currentField, Step, 0));
+                    }
+                }
+                VisitedFields.Add(currentField);
+            }
+            CurrentFields.Clear();
+            foreach (Field item in InspectList)
+            {
+                CurrentFields.Add(item);
+            }
+            InspectList.Clear();
+            Console.Error.WriteLine($"Step {Step}");
+            Step++;
+        }
         //TODO: Implement Step like progress for the whole map
+
     }
 
     void Move()
