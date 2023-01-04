@@ -221,10 +221,10 @@ class GameBoard
     public string GetBuildString()
     {
         string command = "";
-        foreach (Action action in CurrentCommands)
-        {
-            command += action.Build();
-        }
+        // foreach (Action action in CurrentCommands)
+        // {
+        //     command += action.Build();
+        // }
         return command;
     }
 

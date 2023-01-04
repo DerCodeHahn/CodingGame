@@ -227,10 +227,10 @@ class Player
         }
         nextGameBoards.Sort(GameBoard.SortByScore); // Maybe use directly sorted Structure ?
 
-        for (int i = 0; i < 10; i++)
-        {
-            Console.Error.WriteLine($"{nextGameBoards[i].score} {nextGameBoards[i].GetBuildString()}");
-        }
+        // for (int i = 0; i < 10; i++)
+        // {
+        //     Console.Error.WriteLine($"{nextGameBoards[i].score} {nextGameBoards[i].GetBuildString()}");
+        // }
 
     }
 

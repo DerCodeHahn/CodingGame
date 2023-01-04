@@ -1,50 +1,68 @@
-using System.IO;
-using System.Text;
-using System.Collections.Generic;
-using System.Collections;
-using System.Linq;
-using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Numerics;
+using System.Linq;
+using System.Text;
+using System.Diagnostics.CodeAnalysis;
+using System.Collections;
 /*
-UTIL.cs
+ActionsBuilder.cs
 */
 
-static class UTIL
+
+static class ActionsBuilder
 {
-    public static int Distance(Field a, Field b)
+    const string BUILD = "BUILD";
+    const string MOVE = "MOVE";
+    const string SPAWN = "SPAWN";
+    const string WAIT = "WAIT";
+    const string MESSAGE = "MESSAGE";
+
+    public static string Build (Field field)
     {
-        return Math.Abs(a.X - b.X) + Math.Abs(a.X - b.X);
+        return $"{BUILD} {field.PositionLog()};";
     }
 
-    public static int Distance(Field a, (int X, int Y) b)
+    public static string Spawn (Field field, int amount)
     {
-        return Math.Abs(a.X - b.X) + Math.Abs(a.X - b.X);
+        return $"{SPAWN} {amount} {field.PositionLog()};";
     }
 
-    public static bool CheckForInBound(int x, int y)
+    public static string Move (Field from, Field to, int amount)
     {
-        return x >= 0 && y >= 0 && x < GameBoard.width && y < GameBoard.height;
+        int secureAmount = SecureAmount(from, amount);
+
+        return $"{MOVE} {secureAmount} {from.PositionLog()} {to.PositionLog()};";
     }
 
-    public static Field GetFurthestField(List<Field> fields)
+    public static string Move (Field from, int toX ,int toY , int amount)
     {
-        bool toTheRight = Player.PlayDirection == 1;
-        int startIndex = toTheRight ? fields.Count - 1 : 0;
-        int target = toTheRight ? 0 : fields.Count - 1;
+        int secureAmount = SecureAmount(from, amount);
 
-        for(int i = startIndex; toTheRight && i >= 0 || !toTheRight && i <= fields.Count - 1; i+=Player.PlayDirection * -1)
+        return $"{MOVE} {secureAmount} {from.PositionLog()} {toX} {toY};";
+    }
+
+    public static string Move (byte fromX ,byte fromY , byte toX ,byte toY , int amount)
+    {
+        return $"{MOVE} {amount} {fromX} {fromY} {toX} {toY};";
+    }
+
+    static int SecureAmount(Field from,  int amount){
+        int secureAmount = amount;
+        if(amount > from.units)
         {
-            if (fields[i].inRangeOfRecycler && fields[i].scrapAmount == 1)
-                continue;
-            return fields[i];
+            Console.Error.WriteLine($"!!! Tried to move from {from.PositionLog()} {amount}, autoReduced!");
+            secureAmount = from.units;
         }
-        //FallBack
-        if (Player.PlayDirection == 1)
-            return fields[fields.Count - 1];
-        else
-            return fields[0];
+        return secureAmount;
     }
+
+    public static string Wait ()
+    {
+        return WAIT;
+    }
+
 }
 
 
@@ -56,6 +74,26 @@ static class Consts
 {
     public static int BuildCost = 10;
     public static int IncomePerRound = 10;
+}
+
+
+/*
+direction.cs
+*/
+
+struct Direction{
+    public sbyte X;
+    public sbyte Y;
+
+    public Direction(sbyte x, sbyte y)
+    {
+        X = x;
+        Y = y;
+    }
+    public static implicit operator (sbyte x, sbyte y)(Direction direction)
+    {
+        return (direction.X,direction.Y);
+    }
 }
 
 
@@ -81,7 +119,7 @@ struct Field
     public bool GoodSpawn;
     public bool OffenceSpawn;
     public int Pressure;
-
+    public int PressureChangeForecast;
 
     static Direction[] MoveDirectionsLeftToRight = new Direction[]
     {
@@ -109,6 +147,7 @@ struct Field
         GoodSpawn = false;
         OffenceSpawn = false;
         Pressure = 0;
+        PressureChangeForecast = 0;
     }
 
     public static int SortByTotalCollectableScrap(Field x, Field y)
@@ -212,22 +251,251 @@ struct Field
 
 
 /*
-direction.cs
+GameBoard.cs
 */
 
-struct Direction{
-    public sbyte X;
-    public sbyte Y;
 
-    public Direction(sbyte x, sbyte y)
+class GameBoard
+{
+    public static int width, height;
+    public Field[,] fields;
+
+    public HashSet<Field> MyFields;
+    public HashSet<Field> EnemieFields;
+    public HashSet<Field> FreeField;
+
+    public HashSet<Field> EnemieBorderFields;
+    public HashSet<Field> MyBorderFields;
+
+    public int MyMatter;
+
+    public List<Field> MyUnits;
+    public List<Field> EnemyUnits;
+
+    public string CommandGettingHere;
+    public float score;
+
+    public List<Action> CurrentCommands = new List<Action>();
+
+    public Field this[int x, int y]
     {
-        X = x;
-        Y = y;
+        get
+        {
+            return fields[x, y];
+        }
+        set { fields[x, y] = value; }
     }
-    public static implicit operator (sbyte x, sbyte y)(Direction direction)
+
+    public GameBoard(Field[,] fields)
     {
-        return (direction.X,direction.Y);
+        this.fields = fields;
+        MyFields = new();
+        EnemieFields = new();
+        FreeField = new();
+        MyUnits = new();
+        MyBorderFields = new();
+        EnemieBorderFields = new();
+        CommandGettingHere = "";
+        MyMatter = 0;
+        EnemyUnits = new();
     }
+
+    public GameBoard(GameBoard board)
+    {
+        fields = (Field[,])board.fields.Clone();
+        MyFields = board.MyFields;
+        EnemieFields = new HashSet<Field>();
+        FreeField = new HashSet<Field>();
+        MyUnits = new List<Field>();
+        CommandGettingHere = board.CommandGettingHere;
+        MyMatter = board.MyMatter;
+        CurrentCommands = new List<Action>();
+    }
+
+    public static int SortByScore(GameBoard board1, GameBoard board2)
+    {
+        return board1.score.CompareTo(board2.score) * -1;
+    }
+
+    public void Analize()
+    {
+        MyFields.Clear();
+        EnemieFields.Clear();
+        FreeField.Clear();
+        MyBorderFields.Clear();
+        EnemieBorderFields.Clear();
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                Field field = fields[x, y];
+                //Console.Error.Write(field.GetHashCode()+", ");
+
+                if (field.scrapAmount == 0)
+                    continue;
+
+                GetSurroundingValues(ref field);
+
+                fields[x, y] = field;
+
+                if (field.mine)
+                {
+                    MyFields.Add(field);
+                    if (field.units >= 1)
+                    {
+                        MyUnits.Add(field);
+                    }
+                }
+                else if (field.enemies)
+                {
+                    if(field.units >= 1)
+                        EnemyUnits.Add(field);
+                    EnemieFields.Add(field);
+                }
+                else
+                    FreeField.Add(field);
+            }
+        }
+
+        CalculateScore();
+    }
+
+    private void CalculateScore()
+    {
+        int verticalScore = VerticalScore();
+
+        int pureScore = MyFields.Count - EnemieFields.Count;
+        score = pureScore + verticalScore / 2;
+        //Console.Error.WriteLine ($"Current Score : {score} : MyFields {MyFields.Count} , Enemie {EnemieFields.Count}, MyUnits :{MyUnits.Count}");
+    }
+
+    int VerticalScore()
+    {
+        HashSet<Field> set = new(); // use Set for perfomance unique
+        foreach (var unit in MyUnits)
+        {
+            for (byte vPos = unit.X; vPos >= 0 && vPos < width; vPos = (byte)(vPos + Player.PlayDirection * -1)) // Looking back to my base
+            {
+                if (fields[vPos, unit.Y].scrapAmount != 0) // take fields wich i can own into account
+                {
+                    bool isNew = set.Add(fields[vPos, unit.Y]); // add unique to set
+                    if (isNew) // if we found one we can skip the rest of the line
+                        break;
+                }
+            }
+        }
+        set.ExceptWith(MyFields);
+        return set.Count;
+    }
+
+    public List<Field> GetHigherSurroundingsFields()
+    {
+        List<Field> mine = new List<Field>(MyFields);
+        mine = mine.FindAll((c) => { return c.SuroundingStays; });
+        return mine;
+    }
+
+    public List<Field> GetSpawnFields()
+    {
+        List<Field> spawns = new();
+        foreach (Field f in MyFields)
+            if (f.GoodSpawn)
+                spawns.Add(f);
+        return spawns;
+    }
+
+    void GetSurroundingValues(ref Field field)
+    {
+        field.TotalCollectableScrap = field.scrapAmount;
+        field.SuroundingStays = true;
+        field.Pressure = (field.mine) ? field.units : -field.units;
+        foreach (Field direction in field.GetPossibleMoveDirection(this))
+        {
+            CheckNeighbour(ref field, direction);
+        }
+    }
+
+    private void CheckNeighbour(ref Field field, Field neighbour)
+    {
+        //Max Amount Clamped by own scrapAmount
+        field.TotalCollectableScrap += Math.Clamp(neighbour.scrapAmount, (byte)0, field.scrapAmount);
+
+        if (field.mine && neighbour.enemies)
+            field.Pressure -= neighbour.units;
+        if (field.enemies && neighbour.mine)
+            field.Pressure += neighbour.units;
+
+        if (!CheckForHigherSurrounding(field, neighbour))
+            field.SuroundingStays = false;
+        if(field.canSpawn && neighbour.enemies)
+            field.OffenceSpawn = true;
+        if (field.canSpawn && !neighbour.mine && !neighbour.enemies)
+        {
+            field.GoodSpawn = true;
+        }
+
+        if (field.mine && !neighbour.mine)
+        {
+            if (!MyBorderFields.Contains(neighbour))
+                MyBorderFields.Add(neighbour);
+        }
+
+        if (field.enemies && !neighbour.enemies)
+        {
+            if (!EnemieBorderFields.Contains(neighbour))
+                EnemieBorderFields.Add(neighbour);
+        }
+    }
+
+    bool CheckForHigherSurrounding(Field field, Field surroundedField)
+    {
+        if (surroundedField.scrapAmount != 0 && surroundedField.scrapAmount <= field.scrapAmount)
+            return false;
+        else
+            return true;
+    }
+
+    internal void ExecuteCommands(List<Action> moveCommands)
+    {
+        CurrentCommands = moveCommands;
+
+        foreach (Action action in moveCommands)
+        {
+            action.Execute(this);
+        }
+        Analize(); // TODO : Coud move Everthing into Execute to not iterate over all Fields again
+        //TODO: Increase Metal
+        //TODO: Haverst Matel from colletors
+    }
+
+    public string GetBuildString()
+    {
+        string command = "";
+        // foreach (Action action in CurrentCommands)
+        // {
+        //     command += action.Build();
+        // }
+        return command;
+    }
+
+    // internal Field NextFree (Vector2 myUnit)
+    // {
+    //     List<Field> notmine = new List<Field> (EnemieFields);
+    //     notmine.AddRange (FreeField);
+    //     float MinDistance = float.MaxValue;
+    //     Field clostest = new Field ();
+    //     foreach (Field field in notmine)
+    //     {
+    //         float distance = Vector2.Distance (field.position, myUnit);
+    //         if (distance < MinDistance)
+    //         {
+    //             MinDistance = distance;
+    //             clostest = field;
+    //         }
+    //     }
+    //     return clostest;
+    // }
 }
 
 
@@ -457,10 +725,10 @@ class Player
         }
         nextGameBoards.Sort(GameBoard.SortByScore); // Maybe use directly sorted Structure ?
 
-        for (int i = 0; i < 10; i++)
-        {
-            Console.Error.WriteLine($"{nextGameBoards[i].score} {nextGameBoards[i].GetBuildString()}");
-        }
+        // for (int i = 0; i < 10; i++)
+        // {
+        //     Console.Error.WriteLine($"{nextGameBoards[i].score} {nextGameBoards[i].GetBuildString()}");
+        // }
 
     }
 
@@ -517,301 +785,6 @@ class Player
 
 
 /*
-ActionsBuilder.cs
-*/
-
-
-static class ActionsBuilder
-{
-    const string BUILD = "BUILD";
-    const string MOVE = "MOVE";
-    const string SPAWN = "SPAWN";
-    const string WAIT = "WAIT";
-    const string MESSAGE = "MESSAGE";
-
-    public static string Build (Field field)
-    {
-        return $"{BUILD} {field.PositionLog()};";
-    }
-
-    public static string Spawn (Field field, int amount)
-    {
-        return $"{SPAWN} {amount} {field.PositionLog()};";
-    }
-
-    public static string Move (Field from, Field to, int amount)
-    {
-        return $"{MOVE} {amount} {from.PositionLog()} {to.PositionLog()};";
-    }
-
-    public static string Move (Field from, int toX ,int toY , int amount)
-    {
-        return $"{MOVE} {amount} {from.PositionLog()} {toX} {toY};";
-    }
-
-    public static string Move (byte fromX ,byte fromY , byte toX ,byte toY , int amount)
-    {
-        return $"{MOVE} {amount} {fromX} {fromY} {toX} {toY};";
-    }
-
-    public static string Wait ()
-    {
-        return WAIT;
-    }
-
-}
-
-
-/*
-GameBoard.cs
-*/
-
-
-class GameBoard
-{
-    public static int width, height;
-    public Field[,] fields;
-
-    public HashSet<Field> MyFields;
-    public HashSet<Field> EnemieFields;
-    public HashSet<Field> FreeField;
-
-    public HashSet<Field> EnemieBorderFields;
-    public HashSet<Field> MyBorderFields;
-
-    public int MyMatter;
-
-    public List<Field> MyUnits;
-    public List<Field> EnemyUnits;
-
-    public string CommandGettingHere;
-    public float score;
-
-    public List<Action> CurrentCommands = new List<Action>();
-
-    public Field this[int x, int y]
-    {
-        get
-        {
-            return fields[x, y];
-        }
-        set { fields[x, y] = value; }
-    }
-
-    public GameBoard(Field[,] fields)
-    {
-        this.fields = fields;
-        MyFields = new();
-        EnemieFields = new();
-        FreeField = new();
-        MyUnits = new();
-        MyBorderFields = new();
-        EnemieBorderFields = new();
-        CommandGettingHere = "";
-        MyMatter = 0;
-        EnemyUnits = new();
-    }
-
-    public GameBoard(GameBoard board)
-    {
-        fields = (Field[,])board.fields.Clone();
-        MyFields = board.MyFields;
-        EnemieFields = new HashSet<Field>();
-        FreeField = new HashSet<Field>();
-        MyUnits = new List<Field>();
-        CommandGettingHere = board.CommandGettingHere;
-        MyMatter = board.MyMatter;
-        CurrentCommands = new List<Action>();
-    }
-
-    public static int SortByScore(GameBoard board1, GameBoard board2)
-    {
-        return board1.score.CompareTo(board2.score) * -1;
-    }
-
-    public void Analize()
-    {
-        MyFields.Clear();
-        EnemieFields.Clear();
-        FreeField.Clear();
-        MyBorderFields.Clear();
-        EnemieBorderFields.Clear();
-
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                Field field = fields[x, y];
-                //Console.Error.Write(field.GetHashCode()+", ");
-
-                if (field.scrapAmount == 0)
-                    continue;
-
-                GetSurroundingValues(ref field);
-
-                fields[x, y] = field;
-
-                if (field.mine)
-                {
-                    MyFields.Add(field);
-                    if (field.units >= 1)
-                    {
-                        MyUnits.Add(field);
-                    }
-                }
-                else if (field.enemies)
-                {
-                    if(field.units >= 1)
-                        EnemyUnits.Add(field);
-                    EnemieFields.Add(field);
-                }
-                else
-                    FreeField.Add(field);
-            }
-        }
-
-        CalculateScore();
-    }
-
-    private void CalculateScore()
-    {
-        int verticalScore = VerticalScore();
-
-        int pureScore = MyFields.Count - EnemieFields.Count;
-        score = pureScore + verticalScore / 2;
-        //Console.Error.WriteLine ($"Current Score : {score} : MyFields {MyFields.Count} , Enemie {EnemieFields.Count}, MyUnits :{MyUnits.Count}");
-    }
-
-    int VerticalScore()
-    {
-        HashSet<Field> set = new(); // use Set for perfomance unique
-        foreach (var unit in MyUnits)
-        {
-            for (byte vPos = unit.X; vPos >= 0 && vPos < width; vPos = (byte)(vPos + Player.PlayDirection * -1)) // Looking back to my base
-            {
-                if (fields[vPos, unit.Y].scrapAmount != 0) // take fields wich i can own into account
-                {
-                    bool isNew = set.Add(fields[vPos, unit.Y]); // add unique to set
-                    if (isNew) // if we found one we can skip the rest of the line
-                        break;
-                }
-            }
-        }
-        set.ExceptWith(MyFields);
-        return set.Count;
-    }
-
-    public List<Field> GetHigherSurroundingsFields()
-    {
-        List<Field> mine = new List<Field>(MyFields);
-        mine = mine.FindAll((c) => { return c.SuroundingStays; });
-        return mine;
-    }
-
-    public List<Field> GetSpawnFields()
-    {
-        List<Field> spawns = new();
-        foreach (Field f in MyFields)
-            if (f.GoodSpawn)
-                spawns.Add(f);
-        return spawns;
-    }
-
-    void GetSurroundingValues(ref Field field)
-    {
-        field.TotalCollectableScrap = field.scrapAmount;
-        field.SuroundingStays = true;
-        field.Pressure = (field.mine) ? field.units : -field.units;
-        foreach (Field direction in field.GetPossibleMoveDirection(this))
-        {
-            CheckNeighbour(ref field, direction);
-        }
-    }
-
-    private void CheckNeighbour(ref Field field, Field neighbour)
-    {
-        //Max Amount Clamped by own scrapAmount
-        field.TotalCollectableScrap += Math.Clamp(neighbour.scrapAmount, (byte)0, field.scrapAmount);
-
-        if (field.mine && neighbour.enemies)
-            field.Pressure -= neighbour.units;
-        if (field.enemies && neighbour.mine)
-            field.Pressure += neighbour.units;
-
-        if (!CheckForHigherSurrounding(field, neighbour))
-            field.SuroundingStays = false;
-        if(field.canSpawn && neighbour.enemies)
-            field.OffenceSpawn = true;
-        if (field.canSpawn && !neighbour.mine && !neighbour.enemies)
-        {
-            field.GoodSpawn = true;
-        }
-
-        if (field.mine && !neighbour.mine)
-        {
-            if (!MyBorderFields.Contains(neighbour))
-                MyBorderFields.Add(neighbour);
-        }
-
-        if (field.enemies && !neighbour.enemies)
-        {
-            if (!EnemieBorderFields.Contains(neighbour))
-                EnemieBorderFields.Add(neighbour);
-        }
-    }
-
-    bool CheckForHigherSurrounding(Field field, Field surroundedField)
-    {
-        if (surroundedField.scrapAmount != 0 && surroundedField.scrapAmount <= field.scrapAmount)
-            return false;
-        else
-            return true;
-    }
-
-    internal void ExecuteCommands(List<Action> moveCommands)
-    {
-        CurrentCommands = moveCommands;
-
-        foreach (Action action in moveCommands)
-        {
-            action.Execute(this);
-        }
-        Analize(); // TODO : Coud move Everthing into Execute to not iterate over all Fields again
-        //TODO: Increase Metal
-        //TODO: Haverst Matel from colletors
-    }
-
-    public string GetBuildString()
-    {
-        string command = "";
-        foreach (Action action in CurrentCommands)
-        {
-            command += action.Build();
-        }
-        return command;
-    }
-
-    // internal Field NextFree (Vector2 myUnit)
-    // {
-    //     List<Field> notmine = new List<Field> (EnemieFields);
-    //     notmine.AddRange (FreeField);
-    //     float MinDistance = float.MaxValue;
-    //     Field clostest = new Field ();
-    //     foreach (Field field in notmine)
-    //     {
-    //         float distance = Vector2.Distance (field.position, myUnit);
-    //         if (distance < MinDistance)
-    //         {
-    //             MinDistance = distance;
-    //             clostest = field;
-    //         }
-    //     }
-    //     return clostest;
-    // }
-}
-
-
-/*
 Settings.cs
 */
 
@@ -825,7 +798,49 @@ static class Settings
 
 
 /*
-Actions/Action.cs
+UTIL.cs
+*/
+
+static class UTIL
+{
+    public static int Distance(Field a, Field b)
+    {
+        return Math.Abs(a.X - b.X) + Math.Abs(a.X - b.X);
+    }
+
+    public static int Distance(Field a, (int X, int Y) b)
+    {
+        return Math.Abs(a.X - b.X) + Math.Abs(a.X - b.X);
+    }
+
+    public static bool CheckForInBound(int x, int y)
+    {
+        return x >= 0 && y >= 0 && x < GameBoard.width && y < GameBoard.height;
+    }
+
+    public static Field GetFurthestField(List<Field> fields)
+    {
+        bool toTheRight = Player.PlayDirection == 1;
+        int startIndex = toTheRight ? fields.Count - 1 : 0;
+        int target = toTheRight ? 0 : fields.Count - 1;
+
+        for(int i = startIndex; toTheRight && i >= 0 || !toTheRight && i <= fields.Count - 1; i+=Player.PlayDirection * -1)
+        {
+            if (fields[i].inRangeOfRecycler && fields[i].scrapAmount == 1)
+                continue;
+            return fields[i];
+        }
+        //FallBack
+        if (Player.PlayDirection == 1)
+            return fields[fields.Count - 1];
+        else
+            return fields[0];
+    }
+}
+
+
+/*
+Actions\Action.cs
 */
 
 abstract class Action
@@ -837,7 +852,7 @@ abstract class Action
 
 
 /*
-Actions/Move.cs
+Actions\Move.cs
 */
 
 class Move : Action
@@ -858,7 +873,7 @@ class Move : Action
         Field newField = board[toX, toY];
         if (newField.scrapAmount == 0 || newField.recycler)
         {
-            Console.Error.WriteLine ($"IllegaleMove : {Build()}");
+            //Console.Error.WriteLine ($"IllegaleMove : {Build()}");
             return;
         }
         Field field = board[x, y];
@@ -893,536 +908,14 @@ class Move : Action
 
     public override string Build ()
     {
-        return ActionsBuilder.Move (x, y, toX, toY, amount);
+        return "";
+        //     return ActionsBuilder.Move (x, y, toX, toY, amount);
     }
 }
 
 
 /*
-GamePhase/MidGame.cs
-*/
-
-class MidGame : GamePhase
-{
-    Dictionary<Field, int> controlledUnits = new Dictionary<Field, int>();
-    int nothingChangedCounter = 0;
-    int oldPoints = 0;
-    Field conquereUnit;
-    bool Conquering = false;
-    private bool topClosed = false;
-    private bool bottomClosed = false;
-
-    public override void Execute(GameBoard gameBoard)
-    {
-        base.Execute(gameBoard);
-
-        controlledUnits.Clear();
-        ConquereMapOnStuck();
-        SaveUnits();
-        CloseBorders(controlledUnits);
-        BuildDefense();
-        MoveIntoFreeFieldForward();
-        //TODO: keep an eye on overall Mattle to not get overrun
-
-        DecideAction();
-        if (command == "")
-            Console.WriteLine(ActionsBuilder.Wait());
-        else
-            Console.WriteLine(command);
-    }
-
-    private void SaveUnits()
-    {
-        foreach (Field unit in gameBoard.MyUnits)
-        {
-            if (unit.scrapAmount == 1 && unit.inRangeOfRecycler)
-                MoveAway(unit);
-        }
-    }
-
-    private void MoveAway(Field unit)
-    {
-        List<(Field, int)> PrioList = new(4);
-        foreach (Field f in unit.GetPossibleMoveDirection(gameBoard))
-        {
-            if (f.enemies && !f.recycler) // attack
-            {
-                PrioList.Add((f, 1));
-            }
-            else if (!f.enemies && !f.mine) // move to free
-            {
-                PrioList.Add((f, 2));
-            }
-            else //justsave
-            {
-                int prio = f.X == unit.X ? 3 : 4;
-                PrioList.Add((f, prio));
-            }
-        }
-        PrioList.Sort((x1, x2) => { return x1.Item2.CompareTo(x2.Item2); });
-
-        foreach ((Field, int) f in PrioList)
-        {
-            Console.Error.WriteLine($"Save {unit.PositionLog()} to {f.Item1.PositionLog()} with Prio {f.Item2} ");
-        }
-        if (PrioList.Count >= 1)
-        {
-            controlledUnits.Add(unit, unit.units);
-            command += ActionsBuilder.Move(unit, PrioList[0].Item1, unit.units);
-        }
-
-    }
-
-    void MoveIntoFreeFieldForward()
-    {
-        foreach (Field field in gameBoard.MyUnits)
-        {
-            foreach (Field moveField in field.GetPossibleMoveDirection(gameBoard))
-            {
-                bool BackWards = field.X == moveField.X + Player.PlayDirection;
-                if (!BackWards && !moveField.mine && !moveField.enemies)
-                {
-                    if (!controlledUnits.ContainsKey(moveField))
-                        controlledUnits.Add(moveField, 0);
-                    controlledUnits[moveField] = field.units;
-                    command += ActionsBuilder.Move(field, moveField, field.units);
-                    Console.Error.WriteLine($"Flank with {field.PositionLog()} to {moveField.PositionLog()}");
-                    continue;
-                }
-            }
-        }
-    }
-
-    void BuildDefense()
-    {
-        List<Field> defenceBuildSpawn = new List<Field>();
-        List<Field> offenceSpawn = new List<Field>();
-        List<Field> spawnAtFree = new();
-        foreach (Field buildField in gameBoard.MyFields)
-        {
-            if (buildField.GoodSpawn || buildField.OffenceSpawn)
-            {
-                if (buildField.Pressure < 0)
-                    //if (buildField.canBuild)
-                    defenceBuildSpawn.Add(buildField);
-                // else
-                //     offenceSpawn.Add(buildField);
-                else if (buildField.Pressure == 0)
-                {
-                    if (buildField.OffenceSpawn)
-                        offenceSpawn.Add(buildField);
-                    if (buildField.GoodSpawn)
-                        spawnAtFree.Add(buildField);
-                }
-                else
-                {
-                    offenceSpawn.Add(buildField);
-                }
-
-            }
-
-        }
-        //defenceBuildSpawn.Sort(Field.SortByPressure);
-        List<(Field, int)> DefenceValues = AnalysePointsOnRisk(defenceBuildSpawn);
-        foreach ((Field field, int pointLossScore) defence in DefenceValues)
-        {
-            Console.Error.WriteLine($"Position {defence.field.PositionLog()} with Score: {defence.pointLossScore}");
-        }
-        foreach ((Field field, int pointLossScore) defence in DefenceValues)
-        {
-            if (gameBoard.MyMatter < Consts.BuildCost)
-                break;
-            if (defence.field.inRangeOfRecycler && defence.field.scrapAmount == 1)
-                continue;
-            if (defence.field.canBuild)
-            {
-                command += ActionsBuilder.Build(defence.field);
-                Field f = gameBoard[defence.field.X, defence.field.Y];
-                f.recycler = true;
-                gameBoard[defence.field.X, defence.field.Y] = f;
-                gameBoard.MyMatter -= Consts.BuildCost;
-            }
-            else if (defence.field.canSpawn)
-            {
-                command += ActionsBuilder.Spawn(defence.field, defence.field.Pressure * -1);
-                gameBoard.MyMatter -= Consts.BuildCost;
-            }
-        }
-
-        offenceSpawn.Sort(Field.SortByGameDirection);
-        //List<(Field, int)> DefenceUnitSpawnValues = AnalysePointsOnRisk(offenceSpawn,true);
-
-        foreach (Field offence in offenceSpawn)
-        {
-            Console.Error.WriteLine($"OffenceSpawn {offence.PositionLog()}");
-        }
-
-        if (gameBoard.MyMatter >= Consts.BuildCost && offenceSpawn.Count != 0)
-        {
-            int spawnableUnits = Math.Max((gameBoard.MyMatter / Consts.BuildCost) / offenceSpawn.Count, 1);
-            Console.Error.WriteLine(spawnableUnits + " ");
-            foreach (Field offence in offenceSpawn)
-            {
-                if (gameBoard.MyMatter < Consts.BuildCost)
-                    break;
-                if (offence.inRangeOfRecycler && offence.scrapAmount == 1)
-                    continue;
-                Console.Error.WriteLine("OffenceSpawn At" + offence.PositionLog());
-                command += ActionsBuilder.Spawn(offence, spawnableUnits);
-                gameBoard.MyMatter -= Consts.BuildCost * spawnableUnits;
-            }
-        }
-
-        spawnAtFree.Sort(Field.SortByGameDirection);
-        foreach (Field field in spawnAtFree)
-        {
-            if (gameBoard.MyMatter < Consts.BuildCost)
-                break;
-            if (field.inRangeOfRecycler && field.scrapAmount == 1)
-                continue;
-            Console.Error.WriteLine("Free Spawn At" + field.PositionLog());
-
-            command += ActionsBuilder.Spawn(field, 1);
-            gameBoard.MyMatter -= Consts.BuildCost;
-        }
-
-    }
-
-    void DecideAction()
-    {
-        foreach (Field unit in gameBoard.MyUnits)
-        {
-            if (unit.Pressure < 0)
-            {
-                Defence(unit);
-            }
-
-            if (unit.Pressure > 0)
-            {
-                Attack(unit);
-            }
-            // if (unit.Pressure == 0)
-            // {
-            //     WaitPrepareAttack(unit);
-            // }
-        }
-    }
-
-    List<(Field, int)> AnalysePointsOnRisk(List<Field> fields)
-    {
-        List<(Field, int)> pointsAtRisk = new();
-        HashSet<Field> fieldCounted = new();
-        foreach (Field defendPoint in fields)
-        {
-
-            fieldCounted.Clear();
-            fieldCounted.Add(defendPoint);
-            int points = 1; //the field it self
-
-            bool inbound = defendPoint.GetFieldInDirection(true, gameBoard, out Field fieldInAttackDirection);
-            bool horizontalAttack = inbound && fieldInAttackDirection.enemies && fieldInAttackDirection.units >= 1;
-            bool inboundDefend = defendPoint.GetFieldInDirection(false, gameBoard, out Field fieldInDefendDirection);
-            bool freeAreaBehindAttack = inboundDefend && !fieldInDefendDirection.enemies && !fieldInDefendDirection.mine;
-
-            foreach (Field buildAroundField in defendPoint.GetPossibleMoveDirection(gameBoard))
-            {
-                if (buildAroundField.mine)
-                {
-                    points++; // field where i build gets destroyed
-                    //check how much gets Destroyed by blocking
-                    if (buildAroundField.canBuild || buildAroundField.canSpawn)
-                        foreach (Field checkMyField in buildAroundField.GetPossibleMoveDirection(gameBoard))
-                        {
-                            bool notDefendPoint = checkMyField != defendPoint;
-                            bool alreadyCounted = fieldCounted.Contains(checkMyField);
-                            //TODO Check if Field is in my half or enemy half, or even a enemy field
-                            //TODO Check my unit count may be i dont have to build
-                            if (checkMyField.mine && notDefendPoint && !alreadyCounted && buildAroundField.scrapAmount >= checkMyField.scrapAmount)
-                            {
-                                fieldCounted.Add(checkMyField);
-                                points++; // field gets destroyed
-                            }
-                        }
-                }
-                else
-                {
-                    if (horizontalAttack && buildAroundField == fieldInDefendDirection && freeAreaBehindAttack)
-                        points += Player.PlayDirection == 1 ? GameBoard.width - buildAroundField.X : buildAroundField.X;
-                }
-
-            }
-            if (horizontalAttack)
-                points *= 2;
-            Console.Error.WriteLine($"DefendPoint {defendPoint.PositionLog()} would loose {points}");
-            pointsAtRisk.Add((defendPoint, points));
-        }
-        pointsAtRisk.Sort((x, y) => { return x.Item2.CompareTo(y.Item2) * -1; });
-
-        return pointsAtRisk;
-    }
-
-    private void CloseBorders(Dictionary<Field, int> controlledUnits)
-    {
-        bool canSpawn = gameBoard.MyMatter >= Consts.BuildCost;
-        if (!rowMappedFields.ContainsKey(0) && !topClosed)
-        {
-            for (int i = 0; i < GameBoard.height; i++)
-            {
-                if (myRowMappedUnits.ContainsKey(i))
-                {
-                    Field closestUnit = myRowMappedUnits[i][0];
-                    if (!controlledUnits.ContainsKey(closestUnit))
-                    {
-                        Console.Error.WriteLine("Close Top Border With " + closestUnit.PositionLog());
-                        Field borderField = gameBoard.fields[closestUnit.X, 0];
-                        while (borderField.scrapAmount == 0)
-                        {
-                            borderField = gameBoard.fields[closestUnit.X, borderField.Y + 1];
-                        }
-                        if (closestUnit == borderField)
-                            topClosed = true;
-                        else
-                        {
-                            controlledUnits.Add(closestUnit, 1);
-                            command += ActionsBuilder.Move(closestUnit, borderField, 1);
-                        }
-                        break;
-                    }
-                }
-                if (rowMappedFields.ContainsKey(i - 1))
-                {
-                    Field closestSpawn = UTIL.GetFurthestField(rowMappedFields[i - 1]);
-                    Console.Error.WriteLine("Close Top Border With new Spawn" + closestSpawn.PositionLog());
-                    command += ActionsBuilder.Spawn(closestSpawn, 1);
-                    gameBoard.MyMatter -= Consts.BuildCost;
-                    break;
-                }
-            }
-        }
-
-        if (!rowMappedFields.ContainsKey(GameBoard.height - 1) && !bottomClosed)
-        {
-            for (int i = GameBoard.height - 1; i >= 0; i--)
-            {
-                if (myRowMappedUnits.ContainsKey(i))
-                {
-
-                    Field closestUnit = UTIL.GetFurthestField(myRowMappedUnits[i]);
-                    if (!controlledUnits.ContainsKey(closestUnit))
-                    {
-                        Console.Error.WriteLine("Close Bot Border With " + closestUnit.PositionLog());
-                        controlledUnits.Add(closestUnit, 1);
-                        Field borderField = gameBoard.fields[closestUnit.X, GameBoard.height - 1];
-                        while (borderField.scrapAmount == 0)
-                        {
-                            borderField = gameBoard.fields[closestUnit.X, borderField.Y - 1];
-                        }
-                        if (closestUnit == borderField)
-                            bottomClosed = true;
-                        else
-                        {
-                            command += ActionsBuilder.Move(closestUnit, borderField, 1);
-                        }
-                        break;
-                    }
-                }
-                if (rowMappedFields.ContainsKey(i + 1))
-                {
-                    Field closestSpawn = UTIL.GetFurthestField(rowMappedFields[i + 1]);
-                    Console.Error.WriteLine("Close Bot Border With new Spawn" + closestSpawn.PositionLog());
-                    command += ActionsBuilder.Spawn(closestSpawn, 1);
-                    gameBoard.MyMatter -= Consts.BuildCost;
-                    break;
-                }
-            }
-        }
-    }
-
-    void Defence(Field unit)
-    {
-        if (unit.inRangeOfRecycler && unit.scrapAmount == 1)
-            return;
-        int mustSpawn = unit.Pressure * -1;
-
-        if (Consts.BuildCost * mustSpawn <= gameBoard.MyMatter)
-        {
-            gameBoard.MyMatter -= Consts.BuildCost * mustSpawn;
-            command += ActionsBuilder.Spawn(unit, mustSpawn);
-        }
-    }
-
-    void WaitPrepareAttack(Field unit)
-    {
-
-    }
-
-    void Attack(Field unit)
-    {
-        HashSet<Field> disscoverdFields = new();
-        HashSet<Field> currentFields = new();
-        HashSet<Field> visistedFields = new();
-        bool found = controlledUnits.TryGetValue(unit, out int alreadyUsed);
-        int unitsLeft = (unit.units - alreadyUsed);
-        if (unitsLeft <= 0)
-            return;
-        //Attack Nearest Enemy Field
-        List<Field> possibleFields = new ();
-        foreach (Field checkField in unit.GetPossibleMoveDirection(gameBoard))
-        {
-            disscoverdFields.Add(checkField);
-            visistedFields.Add(checkField);
-
-            if (checkField.enemies && unit.Pressure > 0)
-            {
-                possibleFields.Add(checkField);
-            }
-        }
-        if(possibleFields.Count >= 1)
-        {
-            SplittAttack(possibleFields, unit);
-            return;
-        }
-
-        foreach (Field f in disscoverdFields)
-            currentFields.Add(f);
-
-        //Search for next Enemy field
-        while (currentFields.Count > 0)
-        {
-            if (unitsLeft <= 0)
-                return;
-            foreach (Field f in currentFields)
-            {
-                visistedFields.Add(f);
-                foreach (Field checkField in f.GetPossibleMoveDirection(gameBoard))
-                {
-                    //TODO: If two enemy fields are possible try to splitt up
-                    if (checkField.enemies)
-                    {
-                        unitsLeft -= unit.Pressure;
-                        Console.Error.WriteLine($"{unit.PositionLog()} to {checkField.PositionLog()}");
-                        command += ActionsBuilder.Move(unit, checkField, unit.Pressure);
-                        return;
-                    }
-                    if (!visistedFields.Contains(checkField) &&
-                       !disscoverdFields.Contains(checkField))
-                        disscoverdFields.Add(checkField);
-                }
-
-            }
-            currentFields.Clear();
-
-            foreach (Field f in disscoverdFields)
-                currentFields.Add(f);
-            disscoverdFields.Clear();
-        }
-        foreach (Field lastFree in visistedFields)
-        {
-            if (!lastFree.mine)
-            {
-                command += ActionsBuilder.Move(unit, lastFree, unit.Pressure);
-                return;
-            }
-        }
-    }
-
-    void SplittAttack(List<Field> possibleAttackFields, Field targetUnit)
-    {
-        int unitsPerField = targetUnit.Pressure / possibleAttackFields.Count;
-        int rest = targetUnit.Pressure % possibleAttackFields.Count;
-        Console.Error.WriteLine($"SplittAttack {unitsPerField}");
-
-        foreach(Field f in possibleAttackFields)
-        {
-            command += ActionsBuilder.Move(targetUnit, f, unitsPerField + rest);
-            rest = 0;
-        }
-
-
-    }
-
-    void ConquereMapOnStuck()
-    {
-        Console.Error.WriteLine($"ChangeCounter {nothingChangedCounter}");
-        if (Conquering)
-        {
-            HashSet<Field> disscoverdSet = new();
-            HashSet<Field> currentSet = new();
-            HashSet<Field> checkedSet = new();
-            Dictionary<Field, Field> discoverList = new();
-            currentSet.Add(conquereUnit);
-            while (currentSet.Count != 0)
-            {
-                foreach (Field checkField in currentSet)
-                {
-                    checkedSet.Add(checkField);
-                    foreach (Field next in checkField.GetPossibleMoveDirection(gameBoard))
-                    {
-                        if (next == conquereUnit)
-                            continue;
-                        Console.Error.Write(next.PositionLog() + ", ");
-                        if (!discoverList.ContainsKey(next))
-                            discoverList.Add(next, checkField);
-                        if (!next.mine && !next.enemies)
-                        {
-                            Field backtrackingField = next;
-                            while (discoverList.ContainsKey(backtrackingField))
-                            {
-                                if (conquereUnit == discoverList[backtrackingField])
-                                    break;
-                                backtrackingField = discoverList[backtrackingField];
-                            }
-                            Console.Error.WriteLine($"conquereUnit {conquereUnit.PositionLog()} to {next.PositionLog()} over {backtrackingField.PositionLog()}");
-                            command += ActionsBuilder.Move(conquereUnit, backtrackingField, 1);
-                            conquereUnit = backtrackingField;
-                            return;
-                        }
-                        if (!next.enemies && !checkedSet.Contains(next) && !disscoverdSet.Contains(next))
-                        {
-                            disscoverdSet.Add(next);
-                        }
-                    }
-                }
-                currentSet.Clear();
-
-                foreach (Field f in disscoverdSet)
-                    currentSet.Add(f);
-                disscoverdSet.Clear();
-            }
-            Conquering = false;
-            nothingChangedCounter = 0;
-        }
-
-        if (oldPoints == gameBoard.MyFields.Count)
-            nothingChangedCounter++;
-        else
-        {
-            nothingChangedCounter = 0;
-        }
-
-        if (nothingChangedCounter >= Settings.StartConquereAfterSteps)
-        {
-            List<Field> spawnAtFree = new();
-            foreach (Field buildField in gameBoard.MyFields)
-            {
-                if (buildField.GoodSpawn)
-                {
-                    command += ActionsBuilder.Spawn(buildField, 1);
-                    conquereUnit = buildField;
-                    Conquering = true;
-                    gameBoard.MyMatter -= Consts.BuildCost;
-                    Console.Error.WriteLine("spawning C-Unit " + buildField.PositionLog());
-                    break;
-                }
-            }
-        }
-        oldPoints = gameBoard.MyFields.Count;
-    }
-}
-
-
-/*
-GamePhase/EarlyGame.cs
+GamePhase\EarlyGame.cs
 */
 
 class EarlyGame : GamePhase
@@ -1595,8 +1088,11 @@ class EarlyGame : GamePhase
     {
 
         //Console.Error.WriteLine("Update AttackLine");
-        EasyUpdateAttackLine();
-        //DynamicAttackLine();
+        //EasyUpdateAttackLine();
+
+        DynamicAttackLine();
+
+
         // toDO send all other to the next field / front
 
         // Find Point Symetry Attack Line
@@ -1825,7 +1321,7 @@ class EarlyGame : GamePhase
 
 
 /*
-GamePhase/GamePhase.cs
+GamePhase\GamePhase.cs
 */
 
 class GamePhase
@@ -1952,5 +1448,553 @@ class GamePhase
     }
 
 
+}
+
+
+/*
+GamePhase\MidGame.cs
+*/
+
+class MidGame : GamePhase
+{
+    Dictionary<Field, int> controlledUnits = new Dictionary<Field, int> ();
+    int nothingChangedCounter = 0;
+    int oldPoints = 0;
+    Field conquereUnit;
+    bool Conquering = false;
+    private bool topClosed = false;
+    private bool bottomClosed = false;
+
+    public override void Execute (GameBoard gameBoard)
+    {
+        base.Execute (gameBoard);
+
+        controlledUnits.Clear ();
+        ConquereMapOnStuck ();
+        SaveUnits ();
+        CloseBorders (controlledUnits);
+        BuildDefense ();
+        MoveIntoFreeFieldForward ();
+        //TODO: keep an eye on overall Mattle to not get overrun
+
+        DecideAction ();
+        if (command == "")
+            Console.WriteLine (ActionsBuilder.Wait ());
+        else
+            Console.WriteLine (command);
+    }
+
+    private void SaveUnits ()
+    {
+        foreach (Field unit in gameBoard.MyUnits)
+        {
+            if (unit.scrapAmount == 1 && unit.inRangeOfRecycler)
+                MoveAway (unit);
+        }
+    }
+
+    private void MoveAway (Field unit)
+    {
+        List < (Field, int) > PrioList = new (4);
+        foreach (Field f in unit.GetPossibleMoveDirection (gameBoard))
+        {
+            if (f.enemies && !f.recycler) // attack
+            {
+                PrioList.Add ((f, 1));
+            }
+            else if (!f.enemies && !f.mine) // move to free
+            {
+                PrioList.Add ((f, 2));
+            }
+            else //justsave
+            {
+                int prio = f.X == unit.X ? 3 : 4;
+                PrioList.Add ((f, prio));
+            }
+        }
+        PrioList.Sort ((x1, x2) => { return x1.Item2.CompareTo (x2.Item2); });
+
+        foreach ((Field, int) f in PrioList)
+        {
+            Console.Error.WriteLine ($"Save {unit.PositionLog()} to {f.Item1.PositionLog()} with Prio {f.Item2} ");
+        }
+        if (PrioList.Count >= 1)
+        {
+            controlledUnits.Add (unit, unit.units);
+            command += ActionsBuilder.Move (unit, PrioList[0].Item1, unit.units);
+        }
+
+    }
+
+    void MoveIntoFreeFieldForward ()
+    {
+        foreach (var row in myRowMappedUnits)
+        {
+            Field field = UTIL.GetFurthestField (row.Value);
+
+            foreach (Field moveField in field.GetPossibleMoveDirection (gameBoard))
+            {
+                bool BackWards = field.X == moveField.X + Player.PlayDirection;
+                if (!BackWards && !moveField.mine && !moveField.enemies)
+                {
+                    if (!controlledUnits.ContainsKey (moveField))
+                        controlledUnits.Add (moveField, 0);
+                    controlledUnits[moveField] = field.units;
+                    command += ActionsBuilder.Move (field, moveField, field.units);
+                    Console.Error.WriteLine ($"Flank with {field.PositionLog()} to {moveField.PositionLog()}");
+                    continue;
+                }
+            }
+        }
+    }
+
+    void BuildDefense ()
+    {
+        List<Field> defenceBuildSpawn = new List<Field> ();
+        List<Field> offenceSpawn = new List<Field> ();
+        List<Field> spawnAtFree = new ();
+        foreach (Field buildField in gameBoard.MyFields)
+        {
+            if (buildField.GoodSpawn || buildField.OffenceSpawn)
+            {
+                if (buildField.Pressure < 0)
+                    //if (buildField.canBuild)
+                    defenceBuildSpawn.Add (buildField);
+                // else
+                //     offenceSpawn.Add(buildField);
+                else if (buildField.Pressure == 0)
+                {
+                    if (buildField.OffenceSpawn)
+                        offenceSpawn.Add (buildField);
+                    if (buildField.GoodSpawn)
+                        spawnAtFree.Add (buildField);
+                }
+                else
+                {
+                    offenceSpawn.Add (buildField);
+                }
+
+            }
+
+        }
+        //defenceBuildSpawn.Sort(Field.SortByPressure);
+        List < (Field, int) > DefenceValues = AnalysePointsOnRisk (defenceBuildSpawn);
+        foreach ((Field field, int pointLossScore) defence in DefenceValues)
+        {
+            Console.Error.WriteLine ($"Position {defence.field.PositionLog()} with Score: {defence.pointLossScore}");
+        }
+        foreach ((Field field, int pointLossScore) defence in DefenceValues)
+        {
+            if (gameBoard.MyMatter < Consts.BuildCost)
+                break;
+            if (defence.field.inRangeOfRecycler && defence.field.scrapAmount == 1)
+                continue;
+            if (defence.field.canBuild)
+            {
+                command += ActionsBuilder.Build (defence.field);
+                Field f = gameBoard[defence.field.X, defence.field.Y];
+                f.recycler = true;
+                gameBoard[defence.field.X, defence.field.Y] = f;
+                gameBoard.MyMatter -= Consts.BuildCost;
+            }
+            else if (defence.field.canSpawn)
+            {
+                command += ActionsBuilder.Spawn (defence.field, defence.field.Pressure * -1);
+                DecreasePressure (defence.field);
+
+                gameBoard.MyMatter -= Consts.BuildCost;
+            }
+        }
+
+        offenceSpawn.Sort (Field.SortByGameDirection);
+        //List<(Field, int)> DefenceUnitSpawnValues = AnalysePointsOnRisk(offenceSpawn,true);
+
+        foreach (Field offence in offenceSpawn)
+        {
+            Console.Error.WriteLine ($"OffenceSpawn {offence.PositionLog()}");
+        }
+
+        if (gameBoard.MyMatter >= Consts.BuildCost && offenceSpawn.Count != 0)
+        {
+            int spawnableUnits = Math.Max ((gameBoard.MyMatter / Consts.BuildCost) / offenceSpawn.Count, 1);
+            Console.Error.WriteLine (spawnableUnits + " ");
+            foreach (Field offence in offenceSpawn)
+            {
+                if (gameBoard.MyMatter < Consts.BuildCost)
+                    break;
+                if (offence.inRangeOfRecycler && offence.scrapAmount == 1)
+                    continue;
+                Console.Error.WriteLine ("OffenceSpawn At" + offence.PositionLog ());
+                command += ActionsBuilder.Spawn (offence, spawnableUnits);
+                DecreasePressure (offence);
+                gameBoard.MyMatter -= Consts.BuildCost * spawnableUnits;
+            }
+        }
+
+        spawnAtFree.Sort (Field.SortByGameDirection);
+        foreach (Field field in spawnAtFree)
+        {
+            if (gameBoard.MyMatter < Consts.BuildCost)
+                break;
+            if (field.inRangeOfRecycler && field.scrapAmount == 1)
+                continue;
+            Console.Error.WriteLine ("Free Spawn At" + field.PositionLog ());
+
+            command += ActionsBuilder.Spawn (field, 1);
+            gameBoard.MyMatter -= Consts.BuildCost;
+        }
+    }
+
+    private void DecreasePressure (Field defence)
+    {
+        int index = gameBoard.MyUnits.FindIndex (0, gameBoard.MyUnits.Count, (x) => { return x == defence; });
+        if (index == -1) //no units to influence
+            return;
+        Field target = gameBoard.MyUnits[index];
+        target.PressureChangeForecast += 1;
+        gameBoard.MyUnits[index] = target;
+    }
+
+    void DecideAction ()
+    {
+        foreach (Field unit in gameBoard.MyUnits)
+        {
+            int Pressure = unit.Pressure + unit.PressureChangeForecast;
+            if (Pressure < 0)
+            {
+                Defence (unit);
+            }
+
+            if (Pressure > 0)
+            {
+                Attack (unit);
+            }
+            // if (unit.Pressure == 0)
+            // {
+            //     WaitPrepareAttack(unit);
+            // }
+        }
+    }
+
+    List < (Field, int) > AnalysePointsOnRisk (List<Field> fields)
+    {
+        List < (Field, int) > pointsAtRisk = new ();
+        HashSet<Field> fieldCounted = new ();
+        foreach (Field defendPoint in fields)
+        {
+
+            fieldCounted.Clear ();
+            fieldCounted.Add (defendPoint);
+            int points = 1; //the field it self
+
+            bool inbound = defendPoint.GetFieldInDirection (true, gameBoard, out Field fieldInAttackDirection);
+            bool horizontalAttack = inbound && fieldInAttackDirection.enemies && fieldInAttackDirection.units >= 1;
+            bool inboundDefend = defendPoint.GetFieldInDirection (false, gameBoard, out Field fieldInDefendDirection);
+            bool freeAreaBehindAttack = inboundDefend && !fieldInDefendDirection.enemies && !fieldInDefendDirection.mine;
+
+            foreach (Field buildAroundField in defendPoint.GetPossibleMoveDirection (gameBoard))
+            {
+                if (buildAroundField.mine)
+                {
+                    points++; // field where i build gets destroyed
+                    //check how much gets Destroyed by blocking
+                    if (buildAroundField.canBuild || buildAroundField.canSpawn)
+                        foreach (Field checkMyField in buildAroundField.GetPossibleMoveDirection (gameBoard))
+                        {
+                            bool notDefendPoint = checkMyField != defendPoint;
+                            bool alreadyCounted = fieldCounted.Contains (checkMyField);
+                            //TODO Check if Field is in my half or enemy half, or even a enemy field
+                            //TODO Check my unit count may be i dont have to build
+                            if (checkMyField.mine && notDefendPoint && !alreadyCounted && buildAroundField.scrapAmount >= checkMyField.scrapAmount)
+                            {
+                                fieldCounted.Add (checkMyField);
+                                points++; // field gets destroyed
+                            }
+                        }
+                }
+                else
+                {
+                    if (horizontalAttack && buildAroundField == fieldInDefendDirection && freeAreaBehindAttack)
+                        points += Player.PlayDirection == 1 ? GameBoard.width - buildAroundField.X : buildAroundField.X;
+                }
+
+            }
+            if (horizontalAttack)
+                points *= 2;
+            Console.Error.WriteLine ($"DefendPoint {defendPoint.PositionLog()} would loose {points}");
+            pointsAtRisk.Add ((defendPoint, points));
+        }
+        pointsAtRisk.Sort ((x, y) => { return x.Item2.CompareTo (y.Item2) * -1; });
+
+        return pointsAtRisk;
+    }
+
+    private void CloseBorders (Dictionary<Field, int> controlledUnits)
+    {
+        bool canSpawn = gameBoard.MyMatter >= Consts.BuildCost;
+        if (!rowMappedFields.ContainsKey (0) && !topClosed)
+        {
+            for (int i = 0; i < GameBoard.height; i++)
+            {
+                if (myRowMappedUnits.ContainsKey (i))
+                {
+                    Field closestUnit = myRowMappedUnits[i][0];
+                    if (!controlledUnits.ContainsKey (closestUnit))
+                    {
+                        Console.Error.WriteLine ("Close Top Border With " + closestUnit.PositionLog ());
+                        Field borderField = gameBoard.fields[closestUnit.X, 0];
+                        while (borderField.scrapAmount == 0)
+                        {
+                            borderField = gameBoard.fields[closestUnit.X, borderField.Y + 1];
+                        }
+                        if (closestUnit == borderField)
+                            topClosed = true;
+                        else
+                        {
+                            controlledUnits.Add (closestUnit, 1);
+                            command += ActionsBuilder.Move (closestUnit, borderField, 1);
+                        }
+                        break;
+                    }
+                }
+                if (rowMappedFields.ContainsKey (i - 1))
+                {
+                    Field closestSpawn = UTIL.GetFurthestField (rowMappedFields[i - 1]);
+                    Console.Error.WriteLine ("Close Top Border With new Spawn" + closestSpawn.PositionLog ());
+                    command += ActionsBuilder.Spawn (closestSpawn, 1);
+                    gameBoard.MyMatter -= Consts.BuildCost;
+                    break;
+                }
+            }
+        }
+
+        if (!rowMappedFields.ContainsKey (GameBoard.height - 1) && !bottomClosed)
+        {
+            for (int i = GameBoard.height - 1; i >= 0; i--)
+            {
+                if (myRowMappedUnits.ContainsKey (i))
+                {
+
+                    Field closestUnit = UTIL.GetFurthestField (myRowMappedUnits[i]);
+                    if (!controlledUnits.ContainsKey (closestUnit))
+                    {
+                        Console.Error.WriteLine ("Close Bot Border With " + closestUnit.PositionLog ());
+                        controlledUnits.Add (closestUnit, 1);
+                        Field borderField = gameBoard.fields[closestUnit.X, GameBoard.height - 1];
+                        while (borderField.scrapAmount == 0)
+                        {
+                            borderField = gameBoard.fields[closestUnit.X, borderField.Y - 1];
+                        }
+                        if (closestUnit == borderField)
+                            bottomClosed = true;
+                        else
+                        {
+                            command += ActionsBuilder.Move (closestUnit, borderField, 1);
+                        }
+                        break;
+                    }
+                }
+                if (rowMappedFields.ContainsKey (i + 1))
+                {
+                    Field closestSpawn = UTIL.GetFurthestField (rowMappedFields[i + 1]);
+                    Console.Error.WriteLine ("Close Bot Border With new Spawn" + closestSpawn.PositionLog ());
+                    command += ActionsBuilder.Spawn (closestSpawn, 1);
+                    gameBoard.MyMatter -= Consts.BuildCost;
+                    break;
+                }
+            }
+        }
+    }
+
+    void Defence (Field unit)
+    {
+        if (unit.inRangeOfRecycler && unit.scrapAmount == 1)
+            return;
+        int mustSpawn = unit.Pressure * -1;
+
+        if (Consts.BuildCost * mustSpawn <= gameBoard.MyMatter)
+        {
+            gameBoard.MyMatter -= Consts.BuildCost * mustSpawn;
+            command += ActionsBuilder.Spawn (unit, mustSpawn);
+        }
+    }
+
+    void WaitPrepareAttack (Field unit)
+    {
+
+    }
+
+    void Attack (Field unit)
+    {
+        HashSet<Field> disscoverdFields = new ();
+        HashSet<Field> currentFields = new ();
+        HashSet<Field> visistedFields = new ();
+        bool found = controlledUnits.TryGetValue (unit, out int alreadyUsed);
+        int unitsLeft = (unit.units - alreadyUsed);
+        if (unitsLeft <= 0)
+            return;
+        //Attack Nearest Enemy Field
+        List<Field> possibleFields = new ();
+        foreach (Field checkField in unit.GetPossibleMoveDirection (gameBoard))
+        {
+            disscoverdFields.Add (checkField);
+            visistedFields.Add (checkField);
+
+            if (checkField.enemies && unit.Pressure + unit.PressureChangeForecast > 0)
+            {
+                possibleFields.Add (checkField);
+            }
+        }
+        if (possibleFields.Count >= 1)
+        {
+            SplittAttack (possibleFields, unit);
+            return;
+        }
+
+        foreach (Field f in disscoverdFields)
+            currentFields.Add (f);
+
+        //Search for next Enemy field
+        while (currentFields.Count > 0)
+        {
+            if (unitsLeft <= 0)
+                return;
+            foreach (Field f in currentFields)
+            {
+                visistedFields.Add (f);
+                foreach (Field checkField in f.GetPossibleMoveDirection (gameBoard))
+                {
+                    //TODO: If two enemy fields are possible try to splitt up
+                    if (checkField.enemies)
+                    {
+                        unitsLeft -= unit.Pressure;
+                        Console.Error.WriteLine ($"{unit.PositionLog()} to {checkField.PositionLog()}");
+                        command += ActionsBuilder.Move (unit, checkField, unit.Pressure);
+                        return;
+                    }
+                    if (!visistedFields.Contains (checkField) &&
+                        !disscoverdFields.Contains (checkField))
+                        disscoverdFields.Add (checkField);
+                }
+
+            }
+            currentFields.Clear ();
+
+            foreach (Field f in disscoverdFields)
+                currentFields.Add (f);
+            disscoverdFields.Clear ();
+        }
+        foreach (Field lastFree in visistedFields)
+        {
+            if (!lastFree.mine)
+            {
+                command += ActionsBuilder.Move (unit, lastFree, unit.Pressure);
+                return;
+            }
+        }
+    }
+
+    void SplittAttack (List<Field> possibleAttackFields, Field targetUnit)
+    {
+        int unitsPerField;
+        int rest = targetUnit.PressureChangeForecast;
+        if (possibleAttackFields.Count == 1)
+            unitsPerField = targetUnit.Pressure;
+        else
+        {
+            unitsPerField = (targetUnit.Pressure + targetUnit.PressureChangeForecast) / possibleAttackFields.Count;
+            rest = (targetUnit.Pressure + targetUnit.PressureChangeForecast) % possibleAttackFields.Count;
+        }
+
+        Console.Error.WriteLine ($"SplittAttack at {targetUnit.PositionLog()} to {possibleAttackFields.Count} Fields: {unitsPerField} + rest {rest} | Pressure {targetUnit.Pressure} + cast {targetUnit.PressureChangeForecast}");
+
+        foreach (Field f in possibleAttackFields)
+        {
+            int unitCount = unitsPerField;
+            if (rest > 0)
+                unitCount += 1;
+            command += ActionsBuilder.Move (targetUnit, f, unitCount);
+            rest--;
+        }
+
+    }
+
+    void ConquereMapOnStuck ()
+    {
+        Console.Error.WriteLine ($"ChangeCounter {nothingChangedCounter}");
+        if (Conquering)
+        {
+            HashSet<Field> disscoverdSet = new ();
+            HashSet<Field> currentSet = new ();
+            HashSet<Field> checkedSet = new ();
+            Dictionary<Field, Field> discoverList = new ();
+            currentSet.Add (conquereUnit);
+            while (currentSet.Count != 0)
+            {
+                foreach (Field checkField in currentSet)
+                {
+                    checkedSet.Add (checkField);
+                    foreach (Field next in checkField.GetPossibleMoveDirection (gameBoard))
+                    {
+                        if (next == conquereUnit)
+                            continue;
+                        Console.Error.Write (next.PositionLog () + ", ");
+                        if (!discoverList.ContainsKey (next))
+                            discoverList.Add (next, checkField);
+                        if (!next.mine && !next.enemies)
+                        {
+                            Field backtrackingField = next;
+                            while (discoverList.ContainsKey (backtrackingField))
+                            {
+                                if (conquereUnit == discoverList[backtrackingField])
+                                    break;
+                                backtrackingField = discoverList[backtrackingField];
+                            }
+                            Console.Error.WriteLine ($"conquereUnit {conquereUnit.PositionLog()} to {next.PositionLog()} over {backtrackingField.PositionLog()}");
+                            command += ActionsBuilder.Move (conquereUnit, backtrackingField, 1);
+                            conquereUnit = backtrackingField;
+                            return;
+                        }
+                        if (!next.enemies && !checkedSet.Contains (next) && !disscoverdSet.Contains (next))
+                        {
+                            disscoverdSet.Add (next);
+                        }
+                    }
+                }
+                currentSet.Clear ();
+
+                foreach (Field f in disscoverdSet)
+                    currentSet.Add (f);
+                disscoverdSet.Clear ();
+            }
+            Conquering = false;
+            nothingChangedCounter = 0;
+        }
+
+        if (oldPoints == gameBoard.MyFields.Count)
+            nothingChangedCounter++;
+        else
+        {
+            nothingChangedCounter = 0;
+        }
+
+        if (nothingChangedCounter >= Settings.StartConquereAfterSteps)
+        {
+            List<Field> spawnAtFree = new ();
+            foreach (Field buildField in gameBoard.MyFields)
+            {
+                if (buildField.GoodSpawn)
+                {
+                    command += ActionsBuilder.Spawn (buildField, 1);
+                    conquereUnit = buildField;
+                    Conquering = true;
+                    gameBoard.MyMatter -= Consts.BuildCost;
+                    Console.Error.WriteLine ("spawning C-Unit " + buildField.PositionLog ());
+                    break;
+                }
+            }
+        }
+        oldPoints = gameBoard.MyFields.Count;
+    }
 }
 

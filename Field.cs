@@ -18,7 +18,7 @@ struct Field
     public bool GoodSpawn;
     public bool OffenceSpawn;
     public int Pressure;
-
+    public int PressureChangeForecast;
 
     static Direction[] MoveDirectionsLeftToRight = new Direction[]
     {
@@ -46,6 +46,7 @@ struct Field
         GoodSpawn = false;
         OffenceSpawn = false;
         Pressure = 0;
+        PressureChangeForecast = 0;
     }
 
     public static int SortByTotalCollectableScrap(Field x, Field y)

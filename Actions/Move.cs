@@ -16,7 +16,7 @@ class Move : Action
         Field newField = board[toX, toY];
         if (newField.scrapAmount == 0 || newField.recycler)
         {
-            Console.Error.WriteLine ($"IllegaleMove : {Build()}");
+            //Console.Error.WriteLine ($"IllegaleMove : {Build()}");
             return;
         }
         Field field = board[x, y];
@@ -51,6 +51,7 @@ class Move : Action
 
     public override string Build ()
     {
-        return ActionsBuilder.Move (x, y, toX, toY, amount);
+        return "";
+        //     return ActionsBuilder.Move (x, y, toX, toY, amount);
     }
 }
