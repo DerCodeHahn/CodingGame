@@ -1,11 +1,11 @@
+using System.IO;
 using System.Text;
+using System.Collections.Generic;
+using System.Collections;
+using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
-using System.Collections;
-using System.Collections.Generic;
 using System;
-using System.IO;
-using System.Linq;
 /*
 UTIL.cs
 */
@@ -1595,8 +1595,8 @@ class EarlyGame : GamePhase
     {
 
         //Console.Error.WriteLine("Update AttackLine");
-        //EasyUpdateAttackLine();
-        DynamicAttackLine();
+        EasyUpdateAttackLine();
+        //DynamicAttackLine();
         // toDO send all other to the next field / front
 
         // Find Point Symetry Attack Line
