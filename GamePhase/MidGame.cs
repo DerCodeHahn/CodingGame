@@ -13,6 +13,8 @@ class MidGame : GamePhase
         base.Execute (gameBoard);
 
         controlledUnits.Clear ();
+
+        //DontCountFlankingUnitsForDefence ();
         ConquereMapOnStuck ();
         SaveUnits ();
         CloseBorders (controlledUnits);
@@ -25,6 +27,25 @@ class MidGame : GamePhase
             Console.WriteLine (ActionsBuilder.Wait ());
         else
             Console.WriteLine (command);
+    }
+
+    void DontCountFlankingUnitsForDefence ()
+    {
+        foreach (var row in myRowMappedUnits)
+        {
+            Field field = UTIL.GetFurthestField (row.Value);
+
+            foreach (Field moveField in field.GetPossibleMoveDirection (gameBoard))
+            {
+                bool BackWards = field.X == moveField.X + Player.PlayDirection;
+                if (!BackWards && !moveField.mine && !moveField.enemies)
+                { 
+                    Console.Error.WriteLine($"Mark {field.PositionLog()} as Flank");
+                    IncreasePressure (field, field.units);
+                    break;
+                }
+            }
+        }
     }
 
     private void SaveUnits ()
@@ -83,9 +104,10 @@ class MidGame : GamePhase
                     if (!controlledUnits.ContainsKey (moveField))
                         controlledUnits.Add (moveField, 0);
                     controlledUnits[moveField] = field.units;
+                    IncreasePressure (field, field.units);
                     command += ActionsBuilder.Move (field, moveField, field.units);
                     Console.Error.WriteLine ($"Flank with {field.PositionLog()} to {moveField.PositionLog()}");
-                    continue;
+                    break;
                 }
             }
         }
@@ -100,7 +122,8 @@ class MidGame : GamePhase
         {
             if (buildField.GoodSpawn || buildField.OffenceSpawn)
             {
-                if (buildField.Pressure < 0)
+                Console.Error.WriteLine ($"At Field {buildField.PositionLog()} {buildField.Pressure + buildField.PressureChangeForecast } =  {buildField.Pressure}+{buildField.PressureChangeForecast}");
+                if (buildField.Pressure + buildField.PressureChangeForecast < 0)
                     //if (buildField.canBuild)
                     defenceBuildSpawn.Add (buildField);
                 // else
@@ -142,7 +165,8 @@ class MidGame : GamePhase
             }
             else if (defence.field.canSpawn)
             {
-                command += ActionsBuilder.Spawn (defence.field, defence.field.Pressure * -1);
+                int spawnUnits = Math.Max (defence.field.Pressure * -1, 1);
+                command += ActionsBuilder.Spawn (defence.field, spawnUnits);
                 DecreasePressure (defence.field);
 
                 gameBoard.MyMatter -= Consts.BuildCost;
@@ -188,6 +212,19 @@ class MidGame : GamePhase
         }
     }
 
+    void IncreasePressure (Field field, byte units)
+    {
+        int index = gameBoard.MyUnits.FindIndex (0, gameBoard.MyUnits.Count, (x) => { return x == field; });
+        Console.Error.WriteLine ($"Searched for {field.PositionLog()} found at {index}");
+        if (index == -1) //no units to influence
+            return;
+        gameBoard.MyFields.Remove (field);
+        field.PressureChangeForecast -= units;
+
+        gameBoard.MyFields.Add (field);
+        gameBoard.MyUnits[index] = field;
+        Console.Error.WriteLine ($"Set for {gameBoard.MyUnits[index].PositionLog()} foreCast {gameBoard.MyUnits[index].PressureChangeForecast}");
+    }
     private void DecreasePressure (Field defence)
     {
         int index = gameBoard.MyUnits.FindIndex (0, gameBoard.MyUnits.Count, (x) => { return x == defence; });
