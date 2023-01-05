@@ -1,17 +1,9 @@
 class EarlyGame : GamePhase
 {
-    Dictionary<Field, int> AlreadySelectedUnits = new Dictionary<Field, int>();
-    Dictionary<Field, int> NotSelectedUnits = new Dictionary<Field, int>();
-
-
     public override void Execute(GameBoard gameBoard)
     {
         base.Execute(gameBoard);
-        AlreadySelectedUnits.Clear();
-        NotSelectedUnits.Clear();
-
-        foreach (Field field in gameBoard.MyUnits)
-            NotSelectedUnits.Add(field, field.units);
+        
 
 
         BuildSpeedUps();
@@ -40,102 +32,7 @@ class EarlyGame : GamePhase
             }
         }
     }
-    void FlankDetection(bool Top)
-    {
-        int mostmyTopRow = Top ? myRowMappedUnits.Keys.Min() : myRowMappedUnits.Keys.Max();
-        int enemieTopUnit = Top ? enemyRowMappedUnits.Keys.Min() : enemyRowMappedUnits.Keys.Max();
-        if (Top)
-            Console.Error.WriteLine($"My Top{mostmyTopRow} other Top{enemieTopUnit}");
-        else
-            Console.Error.WriteLine($"My Bottom{mostmyTopRow} other Bottom{enemieTopUnit}");
-
-        if (mostmyTopRow == enemieTopUnit)
-            return;
-        Console.Error.WriteLine("Flank in Progress?");
-        int myDefendingUnitIndex = Player.PlayDirection == 1 ? myRowMappedUnits[mostmyTopRow].Count - 1 : 0;
-        Field DefendingUnit = myRowMappedUnits[mostmyTopRow][myDefendingUnitIndex];
-
-        int AttackingUnitIndex = Player.PlayDirection == 1 ? enemyRowMappedUnits[enemieTopUnit].Count - 1 : 0;
-        Field AttackingUnit = enemyRowMappedUnits[enemieTopUnit][AttackingUnitIndex];
-        Console.Error.WriteLine($"Attacking Unit{AttackingUnit.PositionLog()} Def{DefendingUnit.PositionLog()}");
-
-        HashSet<Field> myVisitedFields = new();
-        HashSet<Field> myCurrentFields = new();
-        HashSet<Field> myInspectList = new();
-
-        HashSet<Field> enemyVisitedFields = new();
-        HashSet<Field> enemyCurrentFields = new();
-        HashSet<Field> enemyInspectList = new();
-
-        Dictionary<Field, int> EnemyStepCounter = new();
-
-        myCurrentFields.Add(DefendingUnit);
-        enemyCurrentFields.Add(AttackingUnit);
-        int step = 0;
-
-        while (enemyCurrentFields.Count > 0)
-        {
-            foreach (Field f in enemyCurrentFields)
-            {
-                enemyVisitedFields.Add(f);
-                EnemyStepCounter.Add(f, step);
-                bool hasField = f.GetFieldInDirection(false, gameBoard, out Field moveField);
-
-                if (!moveField.enemies && !enemyVisitedFields.Contains(moveField))
-                    enemyInspectList.Add(moveField);
-
-
-            }
-            step++;
-            enemyCurrentFields.Clear();
-
-            foreach (Field f in enemyInspectList)
-                enemyCurrentFields.Add(f);
-            enemyInspectList.Clear();
-        }
-        step = 1;
-        while (myCurrentFields.Count > 0)
-        {
-            foreach (Field f in myCurrentFields)
-            {
-                myVisitedFields.Add(f);
-                foreach (Field moveField in f.GetPossibleMoveDirection(gameBoard))
-                {
-                    if (!moveField.mine && !myVisitedFields.Contains(moveField))
-                        myInspectList.Add(moveField);
-
-                    if (EnemyStepCounter.ContainsKey(moveField))
-                    {
-                        int stepBalance = EnemyStepCounter[moveField] - step;
-                        if (stepBalance == 1 || stepBalance == 2)
-                        {
-                            Console.Error.WriteLine($"Defending at {moveField.PositionLog()}");
-                            DefendFlank(DefendingUnit, moveField);
-                            return;
-                        }
-                    }
-                }
-
-            }
-            step++;
-            myCurrentFields.Clear();
-            foreach (Field f in myInspectList)
-                myCurrentFields.Add(f);
-            myInspectList.Clear();
-        }
-        //Watch border Lines where enemy has units and i dont have tiles
-        //Add Counter on wich step wich field is reached
-        //Substract counter on how much step i can reach the field
-        // Sum is <0 im to late =0 collisition >0 im first
-    }
-
-    void DefendFlank(Field defendingUnit, Field defendField)
-    {
-        AlreadySelectedUnits.Add(defendingUnit, 1);
-        NotSelectedUnits[defendingUnit]--;
-        command += ActionsBuilder.Move(defendingUnit, defendField, 1);
-    }
-
+    
     void BuildArmee()
     {
         if (gameBoard.MyMatter >= Consts.BuildCost)

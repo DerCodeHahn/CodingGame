@@ -1,6 +1,5 @@
 class MidGame : GamePhase
 {
-    Dictionary<Field, int> controlledUnits = new Dictionary<Field, int> ();
     int nothingChangedCounter = 0;
     int oldPoints = 0;
     Field conquereUnit;
@@ -12,12 +11,15 @@ class MidGame : GamePhase
     {
         base.Execute (gameBoard);
 
-        controlledUnits.Clear ();
+        AlreadySelectedUnits.Clear ();
 
         //DontCountFlankingUnitsForDefence ();
+
         ConquereMapOnStuck ();
         SaveUnits ();
-        CloseBorders (controlledUnits);
+        //CloseBorders (AlreadySelectedUnits);
+        FlankDetection(true);
+        FlankDetection(false);
         BuildDefense ();
         MoveIntoFreeFieldForward ();
         //TODO: keep an eye on overall Mattle to not get overrun
@@ -84,7 +86,7 @@ class MidGame : GamePhase
         }
         if (PrioList.Count >= 1)
         {
-            controlledUnits.Add (unit, unit.units);
+            AlreadySelectedUnits.Add (unit, unit.units);
             command += ActionsBuilder.Move (unit, PrioList[0].Item1, unit.units);
         }
 
@@ -101,13 +103,13 @@ class MidGame : GamePhase
                 bool BackWards = field.X == moveField.X + Player.PlayDirection;
                 if (!BackWards && !moveField.mine && !moveField.enemies)
                 {
-                    if (!controlledUnits.ContainsKey (moveField))
-                        controlledUnits.Add (moveField, 0);
-                    controlledUnits[moveField] = field.units;
+                    if (!AlreadySelectedUnits.ContainsKey (moveField))
+                        AlreadySelectedUnits.Add (moveField, 0);
+                    AlreadySelectedUnits[moveField] = field.units;
                     IncreasePressure (field, field.units);
                     command += ActionsBuilder.Move (field, moveField, field.units);
                     Console.Error.WriteLine ($"Flank with {field.PositionLog()} to {moveField.PositionLog()}");
-                    break;
+                    continue;
                 }
             }
         }
@@ -407,7 +409,7 @@ class MidGame : GamePhase
         HashSet<Field> disscoverdFields = new ();
         HashSet<Field> currentFields = new ();
         HashSet<Field> visistedFields = new ();
-        bool found = controlledUnits.TryGetValue (unit, out int alreadyUsed);
+        bool found = AlreadySelectedUnits.TryGetValue (unit, out int alreadyUsed);
         int unitsLeft = (unit.units - alreadyUsed);
         if (unitsLeft <= 0)
             return;
@@ -425,7 +427,10 @@ class MidGame : GamePhase
         }
         if (possibleFields.Count >= 1)
         {
-            SplittAttack (possibleFields, unit);
+            //SplittAttack (possibleFields, unit);
+            int unitCount = unit.Pressure + unit.PressureChangeForecast;
+            command += ActionsBuilder.Move (unit, possibleFields[0], unitCount);
+
             return;
         }
 
